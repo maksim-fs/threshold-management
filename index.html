@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>生产数据 - 阈值管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="top-header">
+      <div class="brand">
+        <span class="brand-title">生产数据</span>
+        <span class="brand-meta">v2.1 · 2026-04-21</span>
+      </div>
+      <nav class="main-tabs">
+        <button type="button" class="main-tab">产线数据</button>
+        <button type="button" class="main-tab is-active">阈值管理</button>
+        <button type="button" class="main-tab">产线数据模拟</button>
+      </nav>
+      <div class="header-right">
+        <span class="user-pill">admin</span>
+      </div>
+    </header>
+
+    <div class="version-bar">
+      <span class="version-text">正在运行的阈值版本 <strong>2026-04-20 13:46:30</strong></span>
+      <div class="version-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-io">导入/导出</button>
+        <a href="pixel-mm-tool.html" class="btn btn-ghost btn-sm" style="text-decoration:none;" title="毫米转化管理">像素/毫米</a>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-custom-threshold">定制化阈值</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-roi">ROI 阈值</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-deploy">部署阈值</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="search-wrap">
+          <input type="search" class="search-input" id="feature-search" placeholder="搜索特征" autocomplete="off" />
+        </div>
+        <ul class="feature-list" id="feature-list"></ul>
+      </aside>
+
+      <main class="workspace">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <select class="select" id="filter-fov">
+              <option value="">所有视野/ROI 阈值</option>
+              <option value="CCD1-顶盖正面">CCD1-顶盖正面</option>
+              <option value="CCD2-左侧面">CCD2-左侧面</option>
+              <option value="CCD3-右侧面">CCD3-右侧面</option>
+              <option value="CCD4-头部">CCD4-头部</option>
+              <option value="CCD4-尾部">CCD4-尾部</option>
+              <option value="CCD4-顶盖背面">CCD4-顶盖背面</option>
+              <option value="注液孔ROI">注液孔ROI</option>
+              <option value="蓝膜ROI">蓝膜ROI</option>
+              <option value="顶盖二维码ROI">顶盖二维码ROI</option>
+            </select>
+            <select class="select" id="filter-status">
+              <option value="">所有状态</option>
+              <option value="enabled">启用</option>
+              <option value="disabled">禁用</option>
+            </select>
+            <label class="toggle">
+              <input type="checkbox" id="toggle-unconfigured" />
+              <span class="toggle-slider"></span>
+              <span>未配置特征</span>
+            </label>
+            <select class="select" id="sort-by">
+              <option value="created">按创建时间排序</option>
+            </select>
+            <select class="select" id="sort-dir">
+              <option value="desc">降序 ↓</option>
+              <option value="asc">升序 ↑</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-primary" id="btn-create-universal">创建通用阈值</button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="threshold-table">
+            <thead>
+              <tr>
+                <th class="col-idx">#</th>
+                <th>视野/ROI 阈值</th>
+                <th>判断结果</th>
+                <th>状态</th>
+                <th>缺陷判定条件 ①</th>
+                <th>缺陷判定条件 ②</th>
+                <th class="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody id="rules-body"></tbody>
+          </table>
+        </div>
+
+        <div class="table-footer">
+          <button type="button" class="btn btn-outline" id="btn-add-row">+ 添加阈值行</button>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="io-modal" aria-hidden="true">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="io-modal-title">
+      <h2 class="modal-title" id="io-modal-title">导入 / 导出</h2>
+      <p class="modal-desc">请选择要执行的操作。</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="io-choose-import">导入</button>
+        <button type="button" class="btn btn-outline" id="io-choose-export">导出</button>
+        <button type="button" class="btn btn-ghost" id="io-modal-cancel">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

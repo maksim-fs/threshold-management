@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>生产数据 - 定制化阈值</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    a.main-tab {
+      text-decoration: none;
+      color: var(--text-secondary);
+    }
+    a.main-tab:hover {
+      color: var(--text);
+      background: #f5f7fa;
+    }
+    .custom-page {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .custom-page h1 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .custom-page p {
+      margin: 0 0 24px;
+      color: var(--text-secondary);
+      font-size: 14px;
+      max-width: 420px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="top-header">
+      <div class="brand">
+        <span class="brand-title">生产数据</span>
+        <span class="brand-meta">定制化阈值</span>
+      </div>
+      <nav class="main-tabs">
+        <a href="index.html" class="main-tab">← 返回阈值管理</a>
+      </nav>
+      <div class="header-right">
+        <span class="user-pill">admin</span>
+      </div>
+    </header>
+
+    <main class="custom-page">
+      <h1>定制化阈值</h1>
+      <p>此页面用于定制化阈值相关配置。具体内容可在后续迭代中补充。</p>
+      <a href="index.html" class="btn btn-primary">返回阈值管理</a>
+    </main>
+  </div>
+</body>
+</html>

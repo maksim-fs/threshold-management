@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ROI 阈值查看</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .roi-view {
+      min-height: calc(100vh - 52px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .roi-card {
+      width: min(540px, 100%);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      text-align: center;
+    }
+    .roi-card h1 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+    .roi-name {
+      margin: 0 0 14px;
+      color: var(--text-secondary);
+    }
+    .roi-tip {
+      margin: 0 0 20px;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="top-header">
+      <div class="brand">
+        <span class="brand-title">生产数据</span>
+        <span class="brand-meta">ROI 阈值查看</span>
+      </div>
+      <nav class="main-tabs">
+        <a href="index.html" class="main-tab" style="text-decoration:none;color:inherit;">返回阈值管理</a>
+      </nav>
+      <div class="header-right">
+        <span class="user-pill">admin</span>
+      </div>
+    </header>
+
+    <main class="roi-view">
+      <section class="roi-card">
+        <h1>ROI 阈值明细（占位页）</h1>
+        <p class="roi-name" id="roi-name">ROI：-</p>
+        <p class="roi-tip">这里是 ROI 阈值下一级页面，后续你给我具体字段后我再补全界面和交互。</p>
+        <a href="index.html" class="btn btn-primary">返回</a>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      var q = new URLSearchParams(window.location.search);
+      var name = q.get("name") || "-";
+      document.getElementById("roi-name").textContent = "ROI：" + name;
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>生产数据 - 毫米转化</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="pixel-mm-tool.css" />
+</head>
+<body>
+  <div class="app pxmm-page">
+    <header class="top-header">
+      <div class="brand">
+        <span class="brand-title">生产数据</span>
+        <span class="brand-meta">像素 / 毫米 转化</span>
+      </div>
+      <nav class="main-tabs">
+        <button type="button" class="main-tab" id="btn-back">← 返回阈值管理</button>
+      </nav>
+      <div class="header-right">
+        <span class="user-pill">admin</span>
+      </div>
+    </header>
+
+    <div class="pxmm-below-header">
+    <div class="pxmm-main">
+    <!-- 管理：默认显示 -->
+    <div id="view-manage" class="pxmm-view pxmm-view-manage">
+      <div class="pxmm-manage-toolbar">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-new-convert">新增毫米转化</button>
+        <p class="pxmm-manage-lead">此处汇总各视野下已保存的<strong>像素与毫米对应关系</strong>；参考图存于浏览器 IndexedDB（仅本机）。列表缩略图会<strong>叠加当时绘制的多边形区域</strong>，便于辨认测量位置。</p>
+      </div>
+      <div class="table-wrap pxmm-manage-table-wrap">
+        <table class="threshold-table pxmm-manage-main-table">
+          <thead>
+            <tr>
+              <th class="col-thumb">参考图</th>
+              <th>视野</th>
+              <th>转化项</th>
+              <th>像素量</th>
+              <th>毫米量</th>
+              <th>更新时间</th>
+              <th class="col-actions">操作</th>
+            </tr>
+          </thead>
+          <tbody id="manage-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 编辑：绘制 + 表单 -->
+    <div id="view-editor" class="pxmm-view pxmm-view-editor" style="display: none">
+      <div class="pxmm-toolbar pxmm-toolbar-first">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-back-manage">← 返回转化管理</button>
+        <div class="pxmm-spacer"></div>
+        <span class="pxmm-hint" id="pxmm-drawing-hint" style="margin:0;max-width:100%;flex:1;min-width:200px">多边形：依次点击顶点，≥3 点后可「闭合多边形」或<strong>右键</strong>。原点 (0,0) 在左上角。</span>
+      </div>
+
+      <div class="pxmm-clone-edit-notice" id="pxmm-clone-edit-notice" style="display: none" role="status" hidden></div>
+
+      <div class="pxmm-toolbar pxmm-toolbar-import" id="pxmm-source-panel">
+        <div class="pxmm-source-toggles" role="group" aria-label="图像来源">
+          <span class="pxmm-source-label">图像来源</span>
+          <label class="pxmm-radio">
+            <input type="radio" name="pxmm-image-source" id="pxmm-source-line" value="line" />
+            <span>产线数据</span>
+          </label>
+          <label class="pxmm-radio">
+            <input type="radio" name="pxmm-image-source" id="pxmm-source-manual" value="manual" checked />
+            <span>本地上传</span>
+          </label>
+        </div>
+        <div class="pxmm-line-group" id="pxmm-line-group" style="display: none" aria-hidden="true">
+          <label class="pxmm-line-file-label">
+            从产线导入
+            <input type="file" id="file-image-line" accept="image/*" multiple class="select pxmm-file" />
+          </label>
+          <span class="pxmm-inline-hint" id="pxmm-line-hint">可一次选入同一产品下的全部图像。每张会附带视野（实装由产线接口随图返回；原型中由文件名或顺序自动匹配），导入后可在<strong>下方产线图列表</strong>中切换、逐张标定并保存。</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-line-demo" title="原型：模拟一批产线多图，每张带预置视野">演示产线多图</button>
+        </div>
+        <div class="pxmm-manual-group" id="pxmm-manual-group">
+          <label class="pxmm-manual-fov">
+            视野
+            <select class="select" id="fov-select" style="min-width:200px">
+              <option value="">请选择视野</option>
+            </select>
+            <span class="pxmm-required-star" id="fov-manual-hint" aria-hidden="true">＊本地上传时必须选择</span>
+          </label>
+          <label class="pxmm-manual-file">
+            参考图像
+            <input type="file" id="file-image-manual" accept="image/*" class="select pxmm-file" />
+            <span class="pxmm-inline-hint" style="display:block;font-weight:400;margin-top:4px">新增标定须选图。编辑已有记录时可选<strong>新文件</strong>以替换原参考图。</span>
+          </label>
+        </div>
+        <div class="pxmm-line-fov" id="pxmm-line-fov-wrap" style="display: none" aria-hidden="true">
+          <span class="pxmm-line-fov-label">当前图像视野</span>
+          <strong class="pxmm-line-fov-value" id="fov-line-display" title="由产线数据随图附带，不可手改">—</strong>
+          <span class="pxmm-fov-badge">产线已关联</span>
+        </div>
+        <div class="pxmm-samples" id="pxmm-manual-samples">
+          <span class="pxmm-samples-lbl">本地上传示例</span>
+          <button type="button" class="btn btn-ghost btn-sm" data-sample="0">示例图 1</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-sample="1">示例图 2</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-sample="2">示例图 3</button>
+        </div>
+      </div>
+
+      <div class="pxmm-body">
+        <div class="pxmm-canvas-wrap">
+          <div>
+            <div class="cell-inner pxmm-draw-toolbar" style="margin-bottom:10px;flex-wrap:wrap;align-items:center;gap:6px">
+              <span class="pxmm-draw-lbl" style="color:var(--text-secondary);font-size:12px;white-space:nowrap">标定方式</span>
+              <div class="pxmm-draw-seg" role="group" aria-label="标定方式">
+                <button type="button" class="btn btn-outline btn-sm" data-draw-tool="poly" title="多边形">多边形</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-draw-tool="line" title="直线/线段">直线</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-draw-tool="rect" title="与屏幕平行的轴对齐矩形">矩形</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-draw-tool="circle" title="先圆心，再圆上点">圆</button>
+              </div>
+            </div>
+            <div class="cell-inner" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">
+              <button type="button" class="btn btn-outline btn-sm" id="btn-close-poly">闭合多边形</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-undo">撤销一点</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-clear">清空</button>
+            </div>
+            <div class="pxmm-stack" id="img-stack">
+              <img id="work-image" alt="参考图像" />
+              <canvas id="draw-layer" class="pxmm-draw-layer" width="400" height="300"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <aside class="pxmm-side">
+          <h2>测量结果（像素）</h2>
+          <div id="stat-panel"></div>
+          <div class="pxmm-divider"></div>
+          <h2>填写毫米对应值</h2>
+          <div class="pxmm-calib">
+            <label for="calib-metric">选择用于换算的一项（需为长度或面积类二维量，不支持单点 x/y）</label>
+            <select id="calib-metric" aria-label="标定量类型"></select>
+            <label for="calib-mm">对应的实际尺寸</label>
+            <input type="hidden" id="edit-record-id" value="" />
+            <div id="calib-px-wrap" class="pxmm-calib-px-wrap" style="display: none">
+              <label for="calib-px">像素量（编辑时可改）</label>
+              <input type="text" id="calib-px" inputmode="decimal" placeholder="px 或 px²" autocomplete="off" />
+            </div>
+            <input type="text" id="calib-mm" inputmode="decimal" placeholder="长度类填 mm；面积填 mm²" autocomplete="off" />
+            <div class="cell-inner" style="gap: 8px; margin-top: 4px;flex-wrap:wrap">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-save-calib">保存毫米转化</button>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-save-calib-next" style="display: none" title="保存本张后自动切换到下一张，不返回列表">保存并继续下一张</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-cancel-edit" style="display: none">取消编辑</button>
+            </div>
+          </div>
+          <div id="calib-result" class="pxmm-result">闭合多边形后显示像素统计与换算预览。</div>
+        </aside>
+      </div>
+
+      <div class="pxmm-line-preview" id="pxmm-line-preview" style="display: none" hidden aria-hidden="true">
+        <div class="pxmm-line-preview-head">
+          <h3 class="pxmm-line-preview-title">产线多图 · 切换与标定</h3>
+          <span class="pxmm-line-preview-progress" id="line-preview-progress" aria-live="polite">—</span>
+          <div class="pxmm-line-preview-nav">
+            <button type="button" class="btn btn-outline btn-sm" id="btn-line-prev" disabled>上一张</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btn-line-next" disabled>下一张</button>
+          </div>
+        </div>
+        <p class="pxmm-line-preview-hint">在下方缩略图或列表中切换；<strong>未完成当前图时切换会弹窗</strong>（不保存本图会丢失已填/已画）。可<strong>「保存并继续下一张」</strong>在留在本页时连续标定；用<strong>仅保存</strong>则在最后一张保存后回列表。全部图导入后无需重选文件。</p>
+        <div class="pxmm-line-thumb-strip" id="line-preview-strip" role="listbox" aria-label="产线多图缩略图预览" tabindex="0"></div>
+        <div class="pxmm-line-quick" id="pxmm-line-quick-wrap" style="display: none" aria-hidden="true">
+          <label class="pxmm-line-quick-lbl" for="line-queue">在列表中快速选择</label>
+          <select class="select" id="line-queue" style="min-width:220px;max-width:min(100%, 400px)" aria-label="在产线多图中选择当前要标定的一张" disabled></select>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <aside class="pxmm-user-guide" aria-label="使用说明">
+      <div class="pxmm-guide-head">
+        <h2 class="pxmm-guide-title">转换关系 — 使用说明</h2>
+        <p class="pxmm-guide-kicker">以下说明在「转化管理」与「标定编辑」中均会常驻显示。</p>
+      </div>
+
+      <section class="pxmm-guide-block">
+        <h3 class="pxmm-guide-h3">功能目的</h3>
+        <p class="pxmm-guide-p">在<strong>设置阈值</strong>时，界面可展示与像素量相对应的<strong>毫米</strong>单位，便于与现场量纲、工艺要求对照。</p>
+      </section>
+
+      <section class="pxmm-guide-block">
+        <h3 class="pxmm-guide-h3">如何操作</h3>
+        <ol class="pxmm-guide-ol">
+          <li>
+            <span class="pxmm-guide-step-title">确定转换关系</span>
+            <p class="pxmm-guide-p">上传参考图像（可从<strong>产线数据</strong>一次导入同一产品的全部图像，在页面<strong>下方多图条</strong>中逐张切换；或<strong>本地上传</strong>后手动选择视野），在图像中通过多边形标定经<strong>人工确认</strong>的实际尺寸，并保存为当前视野下的像素 / 毫米对应关系。</p>
+            <p class="pxmm-guide-p" style="margin-top:6px">若多个视野的换算与多边形一致，可在列表中执行<strong>克隆</strong>；被克隆行会显示「链自 源视野」。在链出行的编辑页中可为本视野<strong>换图重标定</strong>，保存后解链；也可点「仅打开源标定」去改源。</p>
+          </li>
+          <li>
+            <span class="pxmm-guide-step-title">毫米展示</span>
+            <p class="pxmm-guide-p">保存转化关系后，在<strong>阈值设置</strong>等相关界面中会展示对应的毫米值（换算以已保存的标定为准）。</p>
+          </li>
+        </ol>
+      </section>
+
+      <div class="pxmm-guide-notice" role="note">
+        <h3 class="pxmm-guide-h3">重要说明</h3>
+        <p class="pxmm-guide-p">人工的粗略标定存在误差。在配置阈值时显示的毫米值<strong>仅适合作为参考</strong>，<strong>不能</strong>作为精确测量的标准。</p>
+        <p class="pxmm-guide-p">若希望得到更精确的结果，应进行<strong>相机标定</strong>，并保证检测过程<strong>无抖动、无震动</strong>，且图像<strong>景深不超过 3 mm</strong> 等；具体以现场标定与工艺要求为准。</p>
+      </div>
+    </aside>
+    </div>
+  </div>
+
+  <div class="pxmm-modal" id="pxmm-clone-dialog" style="display: none" role="dialog" aria-modal="true" aria-labelledby="pxmm-clone-title" hidden>
+    <div class="pxmm-modal-backdrop" data-clone-close></div>
+    <div class="pxmm-modal-card">
+      <h3 class="pxmm-modal-title" id="pxmm-clone-title">克隆到其它视野</h3>
+      <p class="pxmm-modal-lead" id="clone-source-desc">—</p>
+      <p class="pxmm-modal-text">当多个视野的<strong>像素/毫米 换算与标定多边形</strong>一致时，可在此将本条记录复用到其他视野。将为每个已选目标视野生成记录，并复用同一张源参考图。</p>
+      <p class="pxmm-modal-hint" id="clone-skip-hint" style="display: none; color: var(--danger);">若某目标视野在列表中已存在 <strong>相同转化项</strong>，将<strong>直接覆盖</strong>该条。</p>
+      <div class="pxmm-clone-checks" id="clone-fov-checks" aria-label="目标视野多选"></div>
+      <div class="pxmm-modal-actions">
+        <button type="button" class="btn btn-primary btn-sm" id="btn-clone-confirm">确认克隆</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-clone-close>取消</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="pixel-mm-tool.js"></script>
+</body>
+</html>
