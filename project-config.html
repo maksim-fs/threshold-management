@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>生产数据 - 项目配置</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="project-config.css" />
+</head>
+<body data-i18n-doc="docTitleProjectConfig">
+  <div class="app">
+    <header class="top-header">
+      <div class="brand">
+        <span class="brand-title" data-i18n="brandTitle">生产数据</span>
+        <span class="brand-meta" data-i18n="tabProjectConfig">项目配置</span>
+      </div>
+      <nav class="main-tabs">
+        <a href="project-config.html" class="main-tab is-active" data-i18n="tabProjectConfig">项目配置</a>
+        <button type="button" class="main-tab" data-i18n="tabLine">产线数据</button>
+        <a href="index.html" class="main-tab" data-i18n="tabThreshold">阈值管理</a>
+        <button type="button" class="main-tab" data-i18n="tabLineSim">产线数据模拟</button>
+      </nav>
+      <div class="header-right">
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-lang" title="English">English</button>
+        <span class="user-pill" data-i18n="userPill">admin</span>
+      </div>
+    </header>
+
+    <div class="pc-demo-banner" data-i18n="pcDemoBanner" role="note">该界面使用于 demo 演示的数据配置，和实际配置流程不同。</div>
+
+    <div class="version-bar version-bar--pc">
+      <span class="version-text" data-i18n="pcVersionBarHint"
+        >在下方以树形编辑视野 → CC → 检测缺陷；完成修改后请点【部署】，阈值管理左侧缺陷列表才会使用最新项目结构。</span>
+      <div class="pc-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="btn-reset-default" data-i18n="pcResetDefault">恢复默认</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-deploy" data-i18n="pcBtnDeploy">部署</button>
+      </div>
+    </div>
+
+    <div class="pc-page-body">
+      <div id="pc-page-inner" class="pc-page-inner" aria-label="项目配置"></div>
+    </div>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="project-config.js"></script>
+</body>
+</html>
