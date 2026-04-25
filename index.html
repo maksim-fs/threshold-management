@@ -17,6 +17,7 @@
         <span class="brand-meta" data-i18n="brandMeta">v2.1 · 2026-04-21</span>
       </div>
       <nav class="main-tabs">
+        <a href="project-config.html" class="main-tab" data-i18n="tabProjectConfig">项目配置</a>
         <button type="button" class="main-tab" data-i18n="tabLine">产线数据</button>
         <button type="button" class="main-tab is-active" data-i18n="tabThreshold">阈值管理</button>
         <button type="button" class="main-tab" data-i18n="tabLineSim">产线数据模拟</button>
@@ -53,7 +54,20 @@
       <main class="workspace">
         <div class="toolbar">
           <div class="toolbar-left">
-            <select class="select" id="filter-fov"></select>
+            <div class="cascade-filter" id="cascade-filter" aria-label="cascade filter">
+              <span class="cascade-filter__item">
+                <span class="cascade-filter__k" data-i18n="filterLabelVision">视野</span>
+                <select class="select cascade-filter__sel" id="filter-vision" title=""></select>
+              </span>
+              <span class="cascade-filter__item">
+                <span class="cascade-filter__k" data-i18n="filterLabelCc">CC</span>
+                <select class="select cascade-filter__sel" id="filter-cc" title=""></select>
+              </span>
+              <span class="cascade-filter__item">
+                <span class="cascade-filter__k" data-i18n="filterLabelImage">图像</span>
+                <select class="select cascade-filter__sel" id="filter-image" title=""></select>
+              </span>
+            </div>
             <select class="select" id="filter-status">
               <option value="">所有状态</option>
               <option value="enabled">启用</option>

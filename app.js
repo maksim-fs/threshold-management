@@ -34,8 +34,14 @@
   }
 
   function postIndexI18n() {
-    if (!document.getElementById("filter-fov")) return;
-    rebuildFovFilter();
+    if (!document.getElementById("filter-vision")) return;
+    const kVis = document.querySelector("#cascade-filter [data-i18n=\"filterLabelVision\"]");
+    if (kVis) kVis.textContent = t("filterLabelVision");
+    const kCc = document.querySelector("#cascade-filter [data-i18n=\"filterLabelCc\"]");
+    if (kCc) kCc.textContent = t("filterLabelCc");
+    const kIm = document.querySelector("#cascade-filter [data-i18n=\"filterLabelImage\"]");
+    if (kIm) kIm.textContent = t("filterLabelImage");
+    rebuildCascadeFilters();
     const fstat = document.getElementById("filter-status");
     if (fstat) {
       if (fstat.options[0]) fstat.options[0].textContent = t("filterAllStatus");
@@ -75,68 +81,420 @@
     return op;
   }
 
-  const FOVS = [
-    "CCD1-顶盖正面",
-    "CCD2-左侧面",
-    "CCD3-右侧面",
-    "CCD4-头部",
-    "CCD4-尾部",
-    "CCD4-顶盖背面",
-  ];
+  const LS_PROJECT_CONFIG = "threshold_project_config_v1";
+  const LS_PROJECT_DEPLOY_TS = "threshold_project_config_deploy_ts";
+  const LS_THRESHOLD_STORE = "threshold_rules_store_v1";
+  function cloneJson(v) {
+    return JSON.parse(JSON.stringify(v));
+  }
+  function safeId(raw, fallback) {
+    const s = String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\u4e00-\u9fa5-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    return s || fallback;
+  }
+  function normalizeProjectConfig(raw) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    const cfg = {
+      visions: Array.isArray(src.visions) ? src.visions : [],
+      features: Array.isArray(src.features) ? src.features : [],
+    };
+    /* 允许空项目；不自动用默认项补齐 */
+    cfg.visions = cfg.visions
+      .map(function (v, vi) {
+        const repeat = Math.max(1, parseInt(v.repeat, 10) || 1);
+        const ccs = Array.isArray(v.ccs) && v.ccs.length ? v.ccs : [];
+        return {
+          id: safeId(v.id, "vision_" + (vi + 1)),
+          name: String(v.name || ("视野_" + (vi + 1))),
+          repeat: repeat,
+          ccs: ccs.map(function (cc, ci) {
+            return {
+              id: safeId(cc.id, "cc_" + (ci + 1)),
+              name: String(cc.name || ("CC_" + (ci + 1))),
+              featureIds: Array.isArray(cc.featureIds) ? cc.featureIds.map(String) : [],
+            };
+          }),
+        };
+      })
+      .filter(function (v) {
+        return v.name;
+      });
+    const configuredSet = new Set();
+    cfg.visions.forEach(function (v) {
+      v.ccs.forEach(function (cc) {
+        cc.featureIds.forEach(function (fid) {
+          configuredSet.add(String(fid));
+        });
+      });
+    });
+    cfg.features = cfg.features.map(function (f, i) {
+      const fid = safeId(f.id, "feature_" + (i + 1));
+      return {
+        id: fid,
+        name: String(f.name || f.id || ("Feature_" + (i + 1))),
+        icon: f.icon === "ok" ? "ok" : "neg",
+        // 阈值页面使用项目配置里“CC 绑定了哪些 feature”作为已配置依据
+        configured: configuredSet.has(fid),
+      };
+    });
+    return cfg;
+  }
+  function loadProjectConfig() {
+    try {
+      const raw = localStorage.getItem(LS_PROJECT_CONFIG);
+      if (!raw) return normalizeProjectConfig({ visions: [], features: [] });
+      return normalizeProjectConfig(JSON.parse(raw));
+    } catch (e) {
+      return normalizeProjectConfig({ visions: [], features: [] });
+    }
+  }
+  const PROJECT_CONFIG = loadProjectConfig();
+  const FOVS = PROJECT_CONFIG.visions.map(function (v) {
+    return v.name;
+  });
   const ROI_TARGETS = ["注液孔ROI", "蓝膜ROI", "顶盖二维码ROI"];
+
+  function buildImageCatalog() {
+    const list = [];
+    let seq = 1;
+    PROJECT_CONFIG.visions.forEach(function (vision, fi) {
+      const repeat = Math.max(1, parseInt(vision.repeat, 10) || 1);
+      const ccs = Array.isArray(vision.ccs) && vision.ccs.length ? vision.ccs : [];
+      ccs.forEach(function (cc, ci) {
+        for (let ii = 1; ii <= repeat; ii++) {
+          const sn = "SN" + String(100000 + fi * 1000 + ci * 100 + ii);
+          const hh = String(8 + fi).padStart(2, "0");
+          const mm = String(10 + ci * 10 + ii).padStart(2, "0");
+          const ss = String((fi + ci + ii) % 60).padStart(2, "0");
+          const imageId = sn + "_20260420T" + hh + mm + ss;
+          list.push({
+            imageId: imageId,
+            fov: vision.name,
+            ccId: cc.id,
+            ccZh: cc.name,
+            ccEn: cc.name,
+            imageNo: ii,
+            sortKey: seq++,
+          });
+        }
+      });
+    });
+    return list;
+  }
+
+  const IMAGE_CATALOG = buildImageCatalog();
+  const IMAGE_BY_ID = {};
+  IMAGE_CATALOG.forEach(function (it) {
+    IMAGE_BY_ID[it.imageId] = it;
+  });
+
+  /** 项目配置：某视野下是否有 CC 绑定了该缺陷 */
+  function visionHasFeature(vision, featureId) {
+    const fid = String(featureId || "");
+    if (!fid) return false;
+    const ccs = vision.ccs || [];
+    for (let i = 0; i < ccs.length; i++) {
+      const ids = ccs[i].featureIds || [];
+      for (let j = 0; j < ids.length; j++) {
+        if (String(ids[j]) === fid) return true;
+      }
+    }
+    return false;
+  }
+
+  /** 当前缺陷可配置阈值的视野名称列表（与项目配置 CC 绑定一致） */
+  function getFovsForFeature(featureId) {
+    const fid = String(featureId || "");
+    if (!fid) return FOVS.slice();
+    return PROJECT_CONFIG.visions
+      .filter(function (v) {
+        return visionHasFeature(v, fid);
+      })
+      .map(function (v) {
+        return v.name;
+      });
+  }
+
+  /** 当前缺陷可配置阈值的图像列表（仅含绑定该缺陷的 视野+CC 所生成的图） */
+  function getImagesForFeature(featureId) {
+    const fid = String(featureId || "");
+    if (!fid) return IMAGE_CATALOG.slice();
+    return IMAGE_CATALOG.filter(function (img) {
+      const v = PROJECT_CONFIG.visions.find(function (vis) {
+        return vis.name === img.fov;
+      });
+      if (!v) return false;
+      const cc = (v.ccs || []).find(function (c) {
+        return c.id === img.ccId;
+      });
+      if (!cc || !cc.featureIds) return false;
+      return cc.featureIds.some(function (id) {
+        return String(id) === fid;
+      });
+    });
+  }
+
+  function makeCcSlotKey(visionId, ccId) {
+    return String(visionId || "") + "::" + String(ccId || "");
+  }
+
+  function parseCcSlotKey(key) {
+    const s = String(key || "");
+    const i = s.indexOf("::");
+    if (i < 0) return null;
+    return { visionId: s.slice(0, i), ccId: s.slice(i + 2) };
+  }
+
+  function findCcSlotByKey(key) {
+    const p = parseCcSlotKey(key);
+    if (!p || !p.visionId || !p.ccId) return null;
+    const v = PROJECT_CONFIG.visions.find(function (x) {
+      return x.id === p.visionId;
+    });
+    if (!v) return null;
+    const cc = (v.ccs || []).find(function (c) {
+      return c.id === p.ccId;
+    });
+    if (!cc) return null;
+    return {
+      key: makeCcSlotKey(v.id, cc.id),
+      visionId: v.id,
+      visionName: v.name,
+      ccId: cc.id,
+      ccName: cc.name,
+    };
+  }
+
+  /** 当前缺陷可配置阈值的 视野+CC 槽位（仅含 CC 上绑定了该缺陷的项） */
+  function getCcSlotsForFeature(featureId) {
+    const fid = String(featureId || "");
+    const out = [];
+    PROJECT_CONFIG.visions.forEach(function (v) {
+      (v.ccs || []).forEach(function (cc) {
+        const bound =
+          !fid ||
+          (cc.featureIds || []).some(function (id) {
+            return String(id) === fid;
+          });
+        if (bound) {
+          out.push({
+            key: makeCcSlotKey(v.id, cc.id),
+            visionId: v.id,
+            visionName: v.name,
+            ccId: cc.id,
+            ccName: cc.name,
+          });
+        }
+      });
+    });
+    return out;
+  }
+
+  function ccSlotDisplayLabel(slot) {
+    if (!slot) return "";
+    return targetDisplayName(slot.visionName) + " / " + String(slot.ccName || "");
+  }
+
+  function ccSlotDisplayLabelFromKey(key) {
+    const s = findCcSlotByKey(key);
+    return s ? ccSlotDisplayLabel(s) : String(key || "");
+  }
+
+  function defaultImageForFov(fovName) {
+    const hit = IMAGE_CATALOG.find(function (it) {
+      return it.fov === fovName;
+    });
+    if (hit) return hit;
+    if (IMAGE_CATALOG.length) return IMAGE_CATALOG[0];
+    return { imageId: "", fov: "", ccId: "", ccZh: "", ccEn: "", imageNo: 0, sortKey: 0 };
+  }
+
+  function imageDisplayNameById(imageId) {
+    const img = IMAGE_BY_ID[imageId];
+    if (!img) return imageId;
+    const fovPart = targetDisplayName(img.fov);
+    if (getLang() === "en") {
+      return fovPart + " / " + img.ccEn + " / Image " + img.imageNo;
+    }
+    return fovPart + " / " + img.ccZh + " / 图像" + img.imageNo;
+  }
 
   function targetDisplayName(internal) {
     return TI.targetDisplayName(internal);
   }
 
-  function rebuildFovFilter() {
-    const sel = document.getElementById("filter-fov");
+  const VISION_ROI_PREFIX = "roi:";
+
+  function getCcSlotsUnderVision(visionName, featureId) {
+    return getCcSlotsForFeature(featureId).filter(function (s) {
+      return s.visionName === visionName;
+    });
+  }
+
+  function parseVisionFilterValue(v) {
+    if (!v) return { kind: "all" };
+    if (v.indexOf(VISION_ROI_PREFIX) === 0) {
+      return { kind: "roi", name: v.slice(VISION_ROI_PREFIX.length) };
+    }
+    return { kind: "fov", name: v };
+  }
+
+  function rebuildVisionSelect() {
+    const sel = document.getElementById("filter-vision");
     if (!sel) return;
     const prev = sel.value;
     sel.innerHTML = "";
     const o0 = document.createElement("option");
     o0.value = "";
-    o0.textContent = t("filterAllFovRoi");
+    o0.textContent = t("filterCascadeAll");
     sel.appendChild(o0);
-    FOVS.forEach(function (f) {
+    const fid = activeFeatureId || "";
+    getFovsForFeature(fid).forEach(function (fov) {
       const o = document.createElement("option");
-      o.value = f;
-      o.textContent = targetDisplayName(f);
+      o.value = fov;
+      o.textContent = targetDisplayName(fov);
       sel.appendChild(o);
     });
-    ROI_TARGETS.forEach(function (r) {
-      const o = document.createElement("option");
-      o.value = r;
-      o.textContent = targetDisplayName(r);
-      sel.appendChild(o);
-    });
-    var has = false;
-    for (var i = 0; i < sel.options.length; i++) {
-      if (sel.options[i].value === prev) {
-        has = true;
+    if (ROI_TARGETS.length) {
+      const sep = document.createElement("option");
+      sep.disabled = true;
+      sep.value = "";
+      sep.textContent = t("filterCascadeSepRoi");
+      sel.appendChild(sep);
+      ROI_TARGETS.forEach(function (rn) {
+        const o2 = document.createElement("option");
+        o2.value = VISION_ROI_PREFIX + rn;
+        o2.textContent = targetDisplayName(rn) + (getLang() === "en" ? " (ROI)" : " (ROI)");
+        sel.appendChild(o2);
+      });
+    }
+    var j;
+    var hasV = false;
+    for (j = 0; j < sel.options.length; j++) {
+      if (sel.options[j].value === prev) {
+        hasV = true;
         break;
       }
     }
-    sel.value = has ? prev : "";
+    sel.value = hasV ? prev : "";
+  }
+
+  function rebuildCcSelect() {
+    const cSel = document.getElementById("filter-cc");
+    const vSel = document.getElementById("filter-vision");
+    if (!cSel || !vSel) return;
+    const prevC = cSel.value;
+    const pv = parseVisionFilterValue(vSel.value);
+    cSel.innerHTML = "";
+    const c0 = document.createElement("option");
+    c0.value = "";
+    c0.textContent = t("filterAllUnderCcInVision");
+    cSel.appendChild(c0);
+    cSel.disabled = !vSel.value || pv.kind !== "fov" || !pv.name;
+    if (pv.kind === "fov" && pv.name) {
+      getCcSlotsUnderVision(pv.name, activeFeatureId).forEach(function (s) {
+        const o = document.createElement("option");
+        o.value = s.key;
+        o.textContent = s.ccName || s.key;
+        cSel.appendChild(o);
+      });
+    }
+    if (cSel.disabled) {
+      cSel.value = "";
+    } else {
+      var hasC = false;
+      for (var jc = 0; jc < cSel.options.length; jc++) {
+        if (cSel.options[jc].value === prevC) {
+          hasC = true;
+          break;
+        }
+      }
+      cSel.value = hasC ? prevC : "";
+    }
+  }
+
+  function rebuildImageSelect() {
+    const iSel = document.getElementById("filter-image");
+    const vSel = document.getElementById("filter-vision");
+    const cSel = document.getElementById("filter-cc");
+    if (!iSel || !vSel || !cSel) return;
+    const prevI = iSel.value;
+    const vStr = vSel.value;
+    const cStr = cSel.value;
+    const pv = parseVisionFilterValue(vStr);
+    iSel.innerHTML = "";
+    if (!vStr || pv.kind !== "fov" || !pv.name) {
+      iSel.disabled = true;
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = t("filterCascadeImageNeedVision");
+      iSel.appendChild(o);
+      iSel.value = "";
+      return;
+    }
+    iSel.disabled = false;
+    const o0i = document.createElement("option");
+    o0i.value = "";
+    o0i.textContent = cStr ? t("filterAllUnderImageInCc") : t("filterAllUnderImageInVision");
+    iSel.appendChild(o0i);
+    const fid2 = activeFeatureId || "";
+    if (cStr) {
+      const sl = findCcSlotByKey(cStr);
+      if (sl) {
+        getImagesForFeature(fid2)
+          .filter(function (im) {
+            return im.fov === sl.visionName && im.ccId === sl.ccId;
+          })
+          .forEach(function (im) {
+            const oi = document.createElement("option");
+            oi.value = im.imageId;
+            oi.textContent = imageDisplayNameById(im.imageId);
+            iSel.appendChild(oi);
+          });
+      }
+    } else {
+      getImagesForFeature(fid2)
+        .filter(function (im) {
+          return im.fov === pv.name;
+        })
+        .forEach(function (im) {
+          const oi2 = document.createElement("option");
+          oi2.value = im.imageId;
+          oi2.textContent = imageDisplayNameById(im.imageId);
+          iSel.appendChild(oi2);
+        });
+    }
+    var hasI = false;
+    for (var ji = 0; ji < iSel.options.length; ji++) {
+      if (iSel.options[ji].value === prevI) {
+        hasI = true;
+        break;
+      }
+    }
+    iSel.value = hasI ? prevI : "";
+  }
+
+  function rebuildCascadeFilters() {
+    rebuildVisionSelect();
+    rebuildCcSelect();
+    rebuildImageSelect();
   }
 
   /** 与「像素/毫米」工具共用，毫米转化记录 */
   const LS_PXMM_RECORDS = "pxmm_convert_records_v1";
 
-  function ts(iso) {
-    return new Date(iso).getTime();
-  }
-
-  const FEATURES = [
-    { id: "scratch", name: "划痕", icon: "neg", configured: true },
-    { id: "bump", name: "凸点", icon: "ok", configured: true },
-    { id: "stain", name: "污渍", icon: "neg", configured: true },
-    { id: "particle", name: "异物颗粒", icon: "ok", configured: true },
-    { id: "edge_chip", name: "崩边", icon: "neg", configured: true },
-    { id: "wrinkle", name: "褶皱", icon: "neg", configured: false },
-    { id: "f2", name: "Feature_2", icon: "neg", configured: true },
-    { id: "f3", name: "Feature_3", icon: "ok", configured: true },
-  ];
+  const FEATURES = PROJECT_CONFIG.features.map(function (f) {
+    return {
+      id: f.id,
+      name: f.name,
+      icon: f.icon === "ok" ? "ok" : "neg",
+      configured: f.configured !== false,
+    };
+  });
 
   let ruleIdSeq = 100;
 
@@ -154,24 +512,107 @@
   }
 
   function getRuleTargetName(rule) {
-    return rule.targetName || rule.fov || FOVS[0];
+    if (rule.targetType === "roi" || isRoiTarget(rule.targetName || rule.fov || "")) {
+      return rule.targetName || rule.fov || ROI_TARGETS[0];
+    }
+    if (rule.targetType === "fov") {
+      return rule.targetName || rule.fov || FOVS[0] || "";
+    }
+    if (rule.targetType === "cc" || (!rule.targetType && parseCcSlotKey(rule.targetName || ""))) {
+      if (rule.targetName) return rule.targetName;
+      const v = PROJECT_CONFIG.visions.find(function (x) {
+        return x.name === rule.fov;
+      });
+      if (v && rule.ccId) return makeCcSlotKey(v.id, rule.ccId);
+      return "";
+    }
+    if (rule.targetType === "image" || rule.imageId) {
+      if (rule.imageId) return rule.imageId;
+    }
+    const baseF = rule.targetName || rule.fov || (FOVS[0] || "");
+    const legacy = defaultImageForFov(baseF);
+    return (legacy && legacy.imageId) || (IMAGE_CATALOG[0] && IMAGE_CATALOG[0].imageId) || "";
   }
 
   function getRuleTargetType(rule) {
-    if (rule.targetType) return rule.targetType;
-    return isRoiTarget(getRuleTargetName(rule)) ? "roi" : "fov";
+    if (rule.targetType === "roi") return "roi";
+    if (rule.targetType === "cc") return "cc";
+    if (rule.targetType === "fov") return "fov";
+    if (rule.targetType === "image") return "image";
+    if (isRoiTarget(rule.targetName || rule.fov || "")) return "roi";
+    if (!rule.targetType && parseCcSlotKey(rule.targetName || "")) return "cc";
+    if (rule.imageId) return "image";
+    return "fov";
+  }
+
+  function getRuleVisionForMm(rule) {
+    if (getRuleTargetType(rule) === "roi") return "";
+    if (getRuleTargetType(rule) === "fov") return getRuleTargetName(rule);
+    if (getRuleTargetType(rule) === "cc") return rule.fov || "";
+    const img = IMAGE_BY_ID[getRuleTargetName(rule)];
+    return img ? img.fov : "";
   }
 
   function makeRule(partial) {
     const result = partial.result || "ng";
     const nd = result === "not_detected_ng";
-    const targetName = partial.targetName || partial.fov || FOVS[0];
-    const targetType = partial.targetType || (isRoiTarget(targetName) ? "roi" : "fov");
+    if (partial.targetType === "fov") {
+      const fovName = partial.targetName || partial.fov || FOVS[0] || "";
+      return {
+        id: "r" + ++ruleIdSeq,
+        createdAt: partial.createdAt != null ? partial.createdAt : Date.now(),
+        targetName: fovName,
+        targetType: "fov",
+        imageId: "",
+        fov: fovName,
+        ccId: "",
+        result: result,
+        status: partial.status || "enabled",
+        c1: nd ? blankCond() : partial.c1 ? { ...partial.c1 } : emptyCond(),
+        c2: nd ? blankCond() : partial.c2 ? { ...partial.c2 } : emptyCond(),
+      };
+    }
+    if (partial.targetType === "cc") {
+      const key = partial.ccSlotKey || partial.targetName || "";
+      const slot = key ? findCcSlotByKey(key) : null;
+      const vision = slot
+        ? PROJECT_CONFIG.visions.find(function (x) {
+            return x.id === slot.visionId;
+          })
+        : null;
+      const fovName = vision ? vision.name : partial.fov || "";
+      const ccId = slot ? slot.ccId : partial.ccId || "";
+      const targetName = slot ? slot.key : key;
+      return {
+        id: "r" + ++ruleIdSeq,
+        createdAt: partial.createdAt != null ? partial.createdAt : Date.now(),
+        targetName: targetName,
+        targetType: "cc",
+        imageId: "",
+        fov: fovName,
+        ccId: ccId,
+        result: result,
+        status: partial.status || "enabled",
+        c1: nd ? blankCond() : partial.c1 ? { ...partial.c1 } : emptyCond(),
+        c2: nd ? blankCond() : partial.c2 ? { ...partial.c2 } : emptyCond(),
+      };
+    }
+    const maybeTarget = partial.targetName || partial.fov || "";
+    const isRoi = partial.targetType === "roi" || isRoiTarget(maybeTarget);
+    const resolvedImage =
+      !isRoi
+        ? partial.imageId && IMAGE_BY_ID[partial.imageId]
+          ? IMAGE_BY_ID[partial.imageId]
+          : defaultImageForFov(maybeTarget || (FOVS[0] || ""))
+        : null;
     return {
       id: "r" + ++ruleIdSeq,
       createdAt: partial.createdAt != null ? partial.createdAt : Date.now(),
-      targetName: targetName,
-      targetType: targetType,
+      targetName: isRoi ? maybeTarget : resolvedImage.imageId,
+      targetType: isRoi ? "roi" : "image",
+      imageId: isRoi ? "" : resolvedImage.imageId,
+      fov: isRoi ? "" : resolvedImage.fov,
+      ccId: isRoi ? "" : resolvedImage.ccId,
       result: result,
       status: partial.status || "enabled",
       c1: nd ? blankCond() : partial.c1 ? { ...partial.c1 } : emptyCond(),
@@ -179,150 +620,52 @@
     };
   }
 
-  const store = {
-    scratch: [
-      makeRule({
-        fov: "CCD1-顶盖正面",
-        result: "not_detected_ng",
-        status: "enabled",
-        createdAt: ts("2026-04-18T09:00:00"),
-      }),
-      makeRule({
-        fov: "CCD1-顶盖正面",
-        result: "ng",
-        status: "enabled",
-        c1: { attr: "mr_length", op: "gte", v1: "25", v2: "" },
-        c2: { attr: "mr_width", op: "lte", v1: "8", v2: "" },
-        createdAt: ts("2026-04-19T11:20:00"),
-      }),
-      makeRule({
-        targetName: "注液孔ROI",
-        targetType: "roi",
-        result: "limit",
-        status: "disabled",
-        c1: { attr: "area", op: "between", v1: "12", v2: "28" },
-        c2: { attr: "v_height", op: "gte", v1: "15", v2: "" },
-        createdAt: ts("2026-04-20T08:05:00"),
-      }),
-      makeRule({
-        fov: "CCD4-头部",
-        result: "ng",
-        status: "enabled",
-        c1: { attr: "h_width", op: "gte", v1: "12", v2: "" },
-        c2: emptyCond(),
-        createdAt: ts("2026-04-20T15:30:00"),
-      }),
-    ],
-    bump: [
-      makeRule({
-        fov: "CCD2-左侧面",
-        result: "ng",
-        status: "enabled",
-        c1: { attr: "area", op: "gte", v1: "30", v2: "" },
-        c2: { attr: "x", op: "between", v1: "120", v2: "480" },
-        createdAt: ts("2026-04-17T14:00:00"),
-      }),
-      makeRule({
-        targetName: "蓝膜ROI",
-        targetType: "roi",
-        result: "limit",
-        status: "enabled",
-        c1: { attr: "mr_length", op: "between", v1: "40", v2: "110" },
-        c2: emptyCond(),
-        createdAt: ts("2026-04-21T10:12:00"),
-      }),
-    ],
-    stain: [
-      makeRule({
-        fov: "CCD1-顶盖正面",
-        result: "ng",
-        status: "enabled",
-        c1: { attr: "area", op: "gte", v1: "85", v2: "" },
-        c2: { attr: "y", op: "lte", v1: "640", v2: "" },
-        createdAt: ts("2026-04-16T16:45:00"),
-      }),
-      makeRule({
-        fov: "CCD3-右侧面",
-        result: "not_detected_ng",
-        status: "enabled",
-        createdAt: ts("2026-04-19T09:30:00"),
-      }),
-    ],
-    particle: [
-      makeRule({
-        fov: "CCD1-顶盖正面",
-        result: "ng",
-        status: "enabled",
-        c1: { attr: "area", op: "between", v1: "50", v2: "200" },
-        c2: { attr: "v_height", op: "gte", v1: "5", v2: "" },
-        createdAt: ts("2026-04-20T13:46:00"),
-      }),
-    ],
-    edge_chip: [
-      makeRule({
-        fov: "CCD4-顶盖背面",
-        result: "limit",
-        status: "enabled",
-        c1: { attr: "mr_length", op: "gte", v1: "30", v2: "" },
-        c2: { attr: "h_width", op: "lte", v1: "20", v2: "" },
-        createdAt: ts("2026-04-15T11:00:00"),
-      }),
-      makeRule({
-        fov: "CCD4-尾部",
-        result: "ng",
-        status: "disabled",
-        c1: { attr: "area", op: "gte", v1: "15", v2: "" },
-        c2: emptyCond(),
-        createdAt: ts("2026-04-21T07:55:00"),
-      }),
-    ],
-    wrinkle: [],
-    f2: [
-      makeRule({
-        fov: "CCD1-顶盖正面",
-        result: "not_detected_ng",
-        status: "enabled",
-        createdAt: ts("2026-04-10T10:00:00"),
-      }),
-      makeRule({
-        fov: "CCD1-顶盖正面",
-        result: "ng",
-        status: "enabled",
-        c1: { attr: "mr_length", op: "gte", v1: "40", v2: "" },
-        c2: { attr: "mr_width", op: "gte", v1: "20", v2: "" },
-        createdAt: ts("2026-04-12T14:22:00"),
-      }),
-      makeRule({
-        fov: "CCD2-左侧面",
-        result: "ng",
-        status: "enabled",
-        c1: { attr: "area", op: "lte", v1: "6", v2: "" },
-        c2: emptyCond(),
-        createdAt: ts("2026-04-14T08:00:00"),
-      }),
-    ],
-    f3: [
-      makeRule({
-        targetName: "顶盖二维码ROI",
-        targetType: "roi",
-        result: "limit",
-        status: "enabled",
-        c1: { attr: "area", op: "between", v1: "50", v2: "100" },
-        c2: { attr: "x", op: "between", v1: "200", v2: "800" },
-        createdAt: ts("2026-04-11T09:15:00"),
-      }),
-      makeRule({
-        fov: "CCD1-顶盖正面",
-        result: "ng",
-        status: "enabled",
-        c1: { attr: "y", op: "gte", v1: "100", v2: "" },
-        c2: emptyCond(),
-        createdAt: ts("2026-04-13T16:40:00"),
-      }),
-    ],
-  };
+  function loadThresholdStoreRaw() {
+    try {
+      const raw = localStorage.getItem(LS_THRESHOLD_STORE);
+      if (!raw) return {};
+      const o = JSON.parse(raw);
+      return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+    } catch (e) {
+      return {};
+    }
+  }
 
-  let activeFeatureId = "scratch";
+  function persistThresholdStore() {
+    try {
+      const out = {};
+      FEATURES.forEach(function (f) {
+        out[f.id] = store[f.id] || [];
+      });
+      localStorage.setItem(LS_THRESHOLD_STORE, JSON.stringify(out));
+    } catch (e) {}
+  }
+
+  function syncRuleIdSeqFromStore() {
+    let max = ruleIdSeq;
+    Object.keys(store).forEach(function (k) {
+      (store[k] || []).forEach(function (r) {
+        const m = String(r.id || "").match(/^r(\d+)$/);
+        if (m) max = Math.max(max, parseInt(m[1], 10));
+      });
+    });
+    ruleIdSeq = max;
+  }
+
+  const store = {};
+  FEATURES.forEach(function (f) {
+    store[f.id] = [];
+  });
+  (function hydrateThresholdStore() {
+    const loaded = loadThresholdStoreRaw();
+    FEATURES.forEach(function (f) {
+      const arr = loaded[f.id];
+      store[f.id] = Array.isArray(arr) ? arr : [];
+    });
+  })();
+  syncRuleIdSeqFromStore();
+
+  let activeFeatureId = (FEATURES[0] || { id: "" }).id;
 
   function $(sel) {
     return document.querySelector(sel);
@@ -347,21 +690,45 @@
     const onlyUnconfigured = $("#toggle-unconfigured").checked;
     const ul = $("#feature-list");
     ul.innerHTML = "";
-    FEATURES.forEach(function (f) {
-      if (onlyUnconfigured && f.configured) return;
-      const disp = t("feature_" + f.id);
-      const dispZh = TI.I18N.zh["feature_" + f.id] != null ? TI.I18N.zh["feature_" + f.id] : f.name;
-      const enLab = (TI.I18N.en["feature_" + f.id] && TI.I18N.en["feature_" + f.id].toString()) || "";
+    const visibleFeatures = FEATURES.filter(function (f) {
+      return onlyUnconfigured ? !f.configured : true;
+    });
+    if (!visibleFeatures.length) {
+      activeFeatureId = "";
+    } else if (
+      !visibleFeatures.some(function (f) {
+        return f.id === activeFeatureId;
+      })
+    ) {
+      activeFeatureId = visibleFeatures[0].id;
+    }
+    visibleFeatures.forEach(function (f) {
+      const tk = "feature_" + f.id;
+      const tv = t(tk);
+      /* 项目配置中的名称优先：避免 f2/f3 等 id 与 i18n 里 feature_f2 等 demo 键冲突，把用户起的「碰伤/褶皱」误显示成 Feature_2 */
+      const disp =
+        f.name && String(f.name).trim() ? f.name : tv === tk ? f.id : tv;
+      const i18nZh = TI.I18N.zh[tk];
+      const i18nEn = TI.I18N.en[tk];
       if (q) {
-        const hit =
-          disp.toLowerCase().includes(q) ||
-          String(dispZh).toLowerCase().includes(q) ||
-          enLab.toLowerCase().includes(q) ||
-          f.id.toLowerCase().includes(q);
-        if (!hit) return;
+        const hay = [disp, f.id, i18nZh, i18nEn, tv]
+          .filter(function (x) {
+            return x != null && String(x).trim() !== "";
+          })
+          .map(function (x) {
+            return String(x).toLowerCase();
+          });
+        if (!hay.some(function (h) {
+          return h.indexOf(q) >= 0;
+        })) {
+          return;
+        }
       }
       const li = document.createElement("li");
-      li.className = "feature-item" + (f.id === activeFeatureId ? " is-active" : "");
+      li.className =
+        "feature-item" +
+        (f.id === activeFeatureId ? " is-active" : "") +
+        (!f.configured ? " is-unbound" : "");
       li.dataset.id = f.id;
       const icon = f.icon === "ok" ? "✓" : "−";
       li.innerHTML =
@@ -379,6 +746,7 @@
       });
       ul.appendChild(li);
     });
+    rebuildCascadeFilters();
   }
 
   function escapeHtml(s) {
@@ -394,18 +762,162 @@
     return String(raw).replace(/\D/g, "");
   }
 
-  function fovOptions(current) {
-    return FOVS.map(function (f) {
-      return (
-        '<option value="' +
-        escapeHtml(f) +
-        '"' +
-        (f === current ? " selected" : "") +
-        ">" +
-        escapeHtml(targetDisplayName(f)) +
-        "</option>"
+  function unifiedTargetPack(kind, raw) {
+    return (
+      "u" +
+      btoa(
+        unescape(encodeURIComponent(JSON.stringify({ k: kind, p: String(raw) })))
+      )
+    );
+  }
+  function unifiedTargetParse(s) {
+    if (!s || s.charAt(0) !== "u") return null;
+    try {
+      return JSON.parse(decodeURIComponent(escape(atob(s.slice(1)))));
+    } catch (e) {
+      return null;
+    }
+  }
+  function isUnifiedOptionSelected(rule, kind, raw) {
+    const rt = getRuleTargetType(rule);
+    if (kind === "fov") return rt === "fov" && (getRuleTargetName(rule) === raw || rule.fov === raw);
+    if (kind === "cc") return rt === "cc" && getRuleTargetName(rule) === raw;
+    if (kind === "img") {
+      return rt === "image" && (rule.imageId || getRuleTargetName(rule)) === raw;
+    }
+    return false;
+  }
+  function applyRuleFromUnifiedPick(rule, o) {
+    if (!o || !o.k) return;
+    if (o.k === "fov") {
+      rule.targetName = o.p;
+      rule.targetType = "fov";
+      rule.imageId = "";
+      rule.fov = o.p;
+      rule.ccId = "";
+      return;
+    }
+    if (o.k === "cc") {
+      const slot = findCcSlotByKey(o.p);
+      if (!slot) return;
+      const vision = PROJECT_CONFIG.visions.find(function (x) {
+        return x.id === slot.visionId;
+      });
+      rule.targetName = slot.key;
+      rule.targetType = "cc";
+      rule.imageId = "";
+      rule.fov = vision ? vision.name : slot.visionName;
+      rule.ccId = slot.ccId;
+      return;
+    }
+    if (o.k === "img") {
+      const im = IMAGE_BY_ID[o.p];
+      if (!im) return;
+      rule.targetName = im.imageId;
+      rule.targetType = "image";
+      rule.imageId = im.imageId;
+      rule.fov = im.fov;
+      rule.ccId = im.ccId;
+    }
+  }
+  /**
+   * 单一下拉、分组展示：可任选 视野 / CC / 单张图，不再拆成「粒度+目标」两步，避免被理解成只能固定某一级。
+   */
+  function buildUnifiedTargetSelectHtml(rule, featureId) {
+    const fid = featureId != null ? featureId : activeFeatureId;
+    const parts = [];
+    parts.push(
+      "<select class=\"select unified-target-sel\" style=\"min-width:min(100%, 320px)\" title=\"" +
+        escapeHtml(t("hintTargetDim")) +
+        "\" aria-label=\"" +
+        escapeHtml(t("thFovRoi")) +
+        '">'
+    );
+    const fovs = getFovsForFeature(fid);
+    const fovRows = fovs.slice();
+    if (isUnifiedOptionSelected(rule, "fov", rule.fov) && rule.fov && fovRows.indexOf(rule.fov) < 0) {
+      fovRows.unshift(rule.fov);
+    }
+    var hasAny = false;
+    if (fovRows.length) {
+      hasAny = true;
+      parts.push(
+        "<optgroup label=\"" + escapeHtml(t("filterGroupVision")) + '">'
       );
-    }).join("");
+      fovRows.forEach(function (fov) {
+        const val = unifiedTargetPack("fov", fov);
+        const sel = isUnifiedOptionSelected(rule, "fov", fov) ? " selected" : "";
+        parts.push(
+          "<option value=\"" +
+            escapeHtml(val) +
+            '"' +
+            sel +
+            ">" +
+            escapeHtml(targetDisplayName(fov)) +
+            "</option>"
+        );
+      });
+      parts.push("</optgroup>");
+    }
+    let slots = getCcSlotsForFeature(fid);
+    const curCcKey = getRuleTargetType(rule) === "cc" ? getRuleTargetName(rule) : "";
+    if (curCcKey && !slots.some(function (s) { return s.key === curCcKey; })) {
+      const orphanC = findCcSlotByKey(curCcKey);
+      if (orphanC) slots = [orphanC].concat(slots);
+    }
+    if (slots.length) {
+      hasAny = true;
+      parts.push("<optgroup label=\"" + escapeHtml(t("filterGroupCc")) + '">');
+      slots.forEach(function (s) {
+        const val = unifiedTargetPack("cc", s.key);
+        const sel = isUnifiedOptionSelected(rule, "cc", s.key) ? " selected" : "";
+        parts.push(
+          "<option value=\"" +
+            escapeHtml(val) +
+            '"' +
+            sel +
+            ">" +
+            escapeHtml(ccSlotDisplayLabel(s)) +
+            "</option>"
+        );
+      });
+      parts.push("</optgroup>");
+    }
+    let imgs = getImagesForFeature(fid);
+    const curImg = getRuleTargetType(rule) === "image" ? rule.imageId || getRuleTargetName(rule) : "";
+    if (curImg && !imgs.some(function (im) { return im.imageId === curImg; })) {
+      const orphanI = IMAGE_BY_ID[curImg];
+      if (orphanI) imgs = [orphanI].concat(imgs);
+    }
+    if (imgs.length) {
+      hasAny = true;
+      parts.push(
+        "<optgroup label=\"" + escapeHtml(t("filterGroupImage")) + '">'
+      );
+      imgs.forEach(function (im) {
+        const val = unifiedTargetPack("img", im.imageId);
+        const sel = isUnifiedOptionSelected(rule, "img", im.imageId) ? " selected" : "";
+        parts.push(
+          "<option value=\"" +
+            escapeHtml(val) +
+            '"' +
+            sel +
+            ">" +
+            escapeHtml(imageDisplayNameById(im.imageId)) +
+            "</option>"
+        );
+      });
+      parts.push("</optgroup>");
+    }
+    if (!hasAny) {
+      parts.push(
+        "<option value=\"\" disabled>" +
+          escapeHtml(t("toastNoFeatureBinding")) +
+          "</option>"
+      );
+    }
+    parts.push("</select>");
+    return parts.join("");
   }
 
   function loadPxMmConvertRecords() {
@@ -514,7 +1026,7 @@
     if (!tr || !rule) return;
     if (getRuleTargetType(rule) === "roi") return;
     if (isNotDetectedResult(rule.result)) return;
-    const fov = getRuleTargetName(rule);
+    const fov = getRuleVisionForMm(rule);
     tr.querySelectorAll(".cond-mm-hint").forEach(function (span) {
       const group = span.closest(".cond-group");
       if (!group || group.classList.contains("is-disabled")) return;
@@ -529,7 +1041,15 @@
 
   function renderTargetName(rule) {
     const name = getRuleTargetName(rule);
-    const show = targetDisplayName(name);
+    const rt = getRuleTargetType(rule);
+    const show =
+      rt === "roi"
+        ? targetDisplayName(name)
+        : rt === "fov"
+          ? targetDisplayName(name)
+          : rt === "cc"
+            ? ccSlotDisplayLabelFromKey(name)
+            : imageDisplayNameById(name);
     if (getRuleTargetType(rule) === "roi") {
       return (
         '<span class="target-name">' +
@@ -653,11 +1173,99 @@
     );
   }
 
+  function ruleMatchesTargetFilter(rule, filterVal) {
+    if (!filterVal) return true;
+    const tname = getRuleTargetName(rule);
+    if (tname === filterVal) return true;
+    if (ROI_TARGETS.indexOf(filterVal) >= 0) {
+      return isRoiTarget(tname) && tname === filterVal;
+    }
+    if (IMAGE_BY_ID[filterVal]) {
+      if (getRuleTargetType(rule) === "image") {
+        const im = IMAGE_BY_ID[rule.imageId] || IMAGE_BY_ID[tname];
+        return im && im.imageId === filterVal;
+      }
+      return false;
+    }
+    if (parseCcSlotKey(filterVal)) {
+      if (getRuleTargetType(rule) === "cc" && tname === filterVal) return true;
+      if (getRuleTargetType(rule) === "image") {
+        const slotF = findCcSlotByKey(filterVal);
+        if (!slotF) return false;
+        const im2 = IMAGE_BY_ID[rule.imageId] || IMAGE_BY_ID[tname];
+        if (!im2) return false;
+        return im2.fov === slotF.visionName && im2.ccId === slotF.ccId;
+      }
+      return false;
+    }
+    const fovsF = getFovsForFeature(activeFeatureId);
+    if (fovsF.indexOf(filterVal) >= 0) {
+      if (getRuleTargetType(rule) === "fov" && (rule.fov === filterVal || tname === filterVal)) return true;
+      if (getRuleTargetType(rule) === "cc") {
+        const sl = findCcSlotByKey(tname);
+        return sl && sl.visionName === filterVal;
+      }
+      if (getRuleTargetType(rule) === "image") {
+        const im3 = IMAGE_BY_ID[rule.imageId] || IMAGE_BY_ID[tname];
+        return im3 && im3.fov === filterVal;
+      }
+    }
+    return false;
+  }
+
+  function ruleMatchesCascadeFilter(rule, vStr, cStr, iStr) {
+    if (!vStr) return true;
+    const tname = getRuleTargetName(rule);
+    const rt = getRuleTargetType(rule);
+    const pv = parseVisionFilterValue(vStr);
+    if (pv.kind === "roi") {
+      return rt === "roi" && tname === pv.name;
+    }
+    if (rt === "roi") return false;
+    if (pv.kind !== "fov") return false;
+    const visName = pv.name;
+    if (!cStr) {
+      if (!iStr) {
+        return ruleMatchesTargetFilter(rule, visName);
+      }
+      const imF = IMAGE_BY_ID[iStr];
+      if (!imF) return false;
+      if (rt !== "image") return false;
+      const rIm = IMAGE_BY_ID[rule.imageId] || IMAGE_BY_ID[tname];
+      return rIm && rIm.imageId === iStr && rIm.fov === visName;
+    }
+    if (!iStr) {
+      if (rt === "cc" && tname === cStr) return true;
+      if (rt === "image") {
+        const slotF = findCcSlotByKey(cStr);
+        if (!slotF) return false;
+        const im2 = IMAGE_BY_ID[rule.imageId] || IMAGE_BY_ID[tname];
+        if (!im2) return false;
+        return im2.fov === slotF.visionName && im2.ccId === slotF.ccId;
+      }
+      if (rt === "fov" && (rule.fov === visName || tname === visName)) {
+        const sl0 = findCcSlotByKey(cStr);
+        return sl0 && sl0.visionName === visName;
+      }
+      return false;
+    }
+    const im3 = IMAGE_BY_ID[iStr];
+    if (!im3) return false;
+    if (rt !== "image") return false;
+    const rIm3 = IMAGE_BY_ID[rule.imageId] || IMAGE_BY_ID[tname];
+    if (!rIm3 || rIm3.imageId !== iStr) return false;
+    const sl2 = findCcSlotByKey(cStr);
+    if (!sl2) return false;
+    return rIm3.fov === sl2.visionName && rIm3.ccId === sl2.ccId;
+  }
+
   function getRulesForDisplay() {
     const rows = (store[activeFeatureId] || []).filter(function (r) {
-      const fovF = $("#filter-fov").value;
+      const fVis = (document.getElementById("filter-vision") || {}).value || "";
+      const fCc = (document.getElementById("filter-cc") || {}).value || "";
+      const fIm = (document.getElementById("filter-image") || {}).value || "";
       const stF = $("#filter-status").value;
-      if (fovF && getRuleTargetName(r) !== fovF) return false;
+      if (fVis && !ruleMatchesCascadeFilter(r, fVis, fCc, fIm)) return false;
       if (stF && r.status !== stF) return false;
       return true;
     });
@@ -707,7 +1315,7 @@
         }).join("");
         const targetCell = isRoi
           ? '<div class="target-wrap">' + renderTargetName(rule) + "</div>"
-          : "<select class=\"select fov-sel\" style=\"min-width:200px\">" + fovOptions(getRuleTargetName(rule)) + "</select>";
+          : buildUnifiedTargetSelectHtml(rule, activeFeatureId);
         const actionCell = isRoi
           ? '<button type="button" class="text-btn btn-view">' + escapeHtml(t("btnView")) + "</button>"
           : '<button type="button" class="text-btn btn-edit">' +
@@ -775,15 +1383,24 @@
     if (!rule) return;
     const isRoi = getRuleTargetType(rule) === "roi";
 
-    const fovSel = tr.querySelector(".fov-sel");
+    const unifiedTargetSel = tr.querySelector(".unified-target-sel");
     const resultSel = tr.querySelector(".result-sel");
     const statusSel = tr.querySelector(".status-sel");
 
-    if (!isRoi && fovSel) {
-      fovSel.addEventListener("change", function () {
-        rule.targetName = fovSel.value;
-        rule.targetType = "fov";
-        updateRowMmHints(tr, rule);
+    if (!isRoi && unifiedTargetSel) {
+      unifiedTargetSel.addEventListener("change", function () {
+        if (!unifiedTargetSel.value) {
+          renderTable();
+          return;
+        }
+        const p = unifiedTargetParse(unifiedTargetSel.value);
+        if (!p) {
+          renderTable();
+          return;
+        }
+        applyRuleFromUnifiedPick(rule, p);
+        persistThresholdStore();
+        renderTable();
       });
     }
 
@@ -798,11 +1415,13 @@
           rule.c1 = emptyCond();
           rule.c2 = emptyCond();
         }
+        persistThresholdStore();
         renderTable();
       });
 
       statusSel.addEventListener("change", function () {
         rule.status = statusSel.value;
+        persistThresholdStore();
         renderTable();
       });
     }
@@ -816,10 +1435,12 @@
         sel.addEventListener("change", function () {
           cond[sel.dataset.field] = sel.value;
           if (sel.dataset.field === "op") {
+            persistThresholdStore();
             renderTable();
             return;
           }
           updateRowMmHints(tr, rule);
+          persistThresholdStore();
         });
       });
 
@@ -831,6 +1452,7 @@
           }
           cond[inp.dataset.field] = cleaned;
           updateRowMmHints(tr, rule);
+          persistThresholdStore();
         });
       });
     });
@@ -846,19 +1468,84 @@
       return;
     }
 
-      tr.querySelector(".btn-edit").addEventListener("click", function () {
-        if (fovSel) fovSel.focus();
-        showToast(t("toastFovEdit"));
-      });
+    tr.querySelector(".btn-edit").addEventListener("click", function () {
+      if (unifiedTargetSel) unifiedTargetSel.focus();
+      showToast(t("toastFovEdit"));
+    });
 
-      tr.querySelector(".btn-del").addEventListener("click", function () {
-        if (!confirm(t("confirmDelete"))) return;
+    tr.querySelector(".btn-del").addEventListener("click", function () {
+      if (!confirm(t("confirmDelete"))) return;
       store[activeFeatureId] = store[activeFeatureId].filter(function (r) {
         return r.id !== id;
       });
+      persistThresholdStore();
       renderTable();
       showToast(t("toastDeleted"));
     });
+  }
+
+  /**
+   * 为当前选中的缺陷追加一条默认规则。工具栏只决定**+添加行**时的维度；创建通用阈值为「视野」首项。
+   * 行内目标见 buildUnifiedTargetSelectHtml。
+   * @param {string|undefined} forcedMode 为 "fov" | "cc" | "image" 时强制；未传则使用工具栏
+   */
+  function tryAddDefaultRuleRow(forcedMode) {
+    if (!FEATURES.length || !activeFeatureId) {
+      showToast(t("toastAddRowBlocked"));
+      return null;
+    }
+    const mode =
+      forcedMode === "fov" || forcedMode === "cc" || forcedMode === "image" ? forcedMode : "fov";
+    const fovsForF = getFovsForFeature(activeFeatureId);
+    const imgsForF = getImagesForFeature(activeFeatureId);
+    const slotsForF = getCcSlotsForFeature(activeFeatureId);
+    if (mode === "fov") {
+      if (!fovsForF.length) {
+        showToast(t("toastNoFeatureBinding"));
+        return null;
+      }
+    } else if (mode === "cc") {
+      if (!slotsForF.length) {
+        showToast(t("toastNoFeatureBinding"));
+        return null;
+      }
+    } else {
+      if (!imgsForF.length) {
+        showToast(t("toastNoFeatureBinding"));
+        return null;
+      }
+    }
+    if (!store[activeFeatureId]) store[activeFeatureId] = [];
+    const rule =
+      mode === "fov"
+        ? makeRule({
+            targetName: fovsForF[0] || "",
+            targetType: "fov",
+            result: "ng",
+            status: "enabled",
+            c1: { attr: "area", op: "gte", v1: "", v2: "" },
+            c2: emptyCond(),
+          })
+        : mode === "cc"
+          ? makeRule({
+              targetType: "cc",
+              ccSlotKey: slotsForF[0].key,
+              result: "ng",
+              status: "enabled",
+              c1: { attr: "area", op: "gte", v1: "", v2: "" },
+              c2: emptyCond(),
+            })
+          : makeRule({
+              imageId: imgsForF[0] ? imgsForF[0].imageId : "",
+              targetType: "image",
+              result: "ng",
+              status: "enabled",
+              c1: { attr: "area", op: "gte", v1: "", v2: "" },
+              c2: emptyCond(),
+            });
+    store[activeFeatureId].push(rule);
+    persistThresholdStore();
+    return rule;
   }
 
   function init() {
@@ -876,7 +1563,27 @@
       renderFeatureList(e.target.value);
     });
 
-    $("#filter-fov").addEventListener("change", renderTable);
+    (function wireCascadeFilter() {
+      const fv = document.getElementById("filter-vision");
+      const fc = document.getElementById("filter-cc");
+      const fi = document.getElementById("filter-image");
+      if (fv) {
+        fv.addEventListener("change", function () {
+          rebuildCcSelect();
+          rebuildImageSelect();
+          renderTable();
+        });
+      }
+      if (fc) {
+        fc.addEventListener("change", function () {
+          rebuildImageSelect();
+          renderTable();
+        });
+      }
+      if (fi) {
+        fi.addEventListener("change", renderTable);
+      }
+    })();
 
     window.addEventListener("focus", function () {
       document.querySelectorAll("#rules-body tr[data-rule-id]").forEach(function (tr) {
@@ -887,6 +1594,10 @@
     });
 
     window.addEventListener("storage", function (e) {
+      if (e.key === LS_PROJECT_CONFIG || e.key === LS_PROJECT_DEPLOY_TS) {
+        window.location.reload();
+        return;
+      }
       if (e.key !== LS_PXMM_RECORDS) return;
       document.querySelectorAll("#rules-body tr[data-rule-id]").forEach(function (tr) {
         const rid = tr.dataset.ruleId;
@@ -899,39 +1610,45 @@
     $("#sort-dir").addEventListener("change", renderTable);
 
     $("#toggle-unconfigured").addEventListener("change", function () {
-      if ($("#toggle-unconfigured").checked) {
-        const cur = FEATURES.find(function (f) {
-          return f.id === activeFeatureId;
-        });
-        if (cur && cur.configured) {
-          const firstUn = FEATURES.find(function (f) {
+      const onlyUnconfigured = $("#toggle-unconfigured").checked;
+      const firstPick = onlyUnconfigured
+        ? FEATURES.find(function (f) {
             return !f.configured;
-          });
-          if (firstUn) activeFeatureId = firstUn.id;
-        }
-      }
+          })
+        : FEATURES[0] || null;
+      if (firstPick) activeFeatureId = firstPick.id;
+      else activeFeatureId = "";
       renderFeatureList($("#feature-search").value);
       renderTable();
     });
 
     $("#btn-add-row").addEventListener("click", function () {
-      if (!store[activeFeatureId]) store[activeFeatureId] = [];
-      store[activeFeatureId].push(
-        makeRule({
-          targetName: FOVS[0],
-          targetType: "fov",
-          result: "ng",
-          status: "enabled",
-          c1: { attr: "area", op: "gte", v1: "", v2: "" },
-          c2: emptyCond(),
-        })
-      );
+      const rule = tryAddDefaultRuleRow();
+      if (!rule) return;
       renderTable();
       showToast(t("toastAddRow"));
     });
 
     $("#btn-create-universal").addEventListener("click", function () {
-      showToast(t("toastDemoUniversal"));
+      const rule = tryAddDefaultRuleRow("fov");
+      if (!rule) return;
+      const fSt = $("#filter-status");
+      if (fSt) fSt.value = "";
+      rebuildVisionSelect();
+      const vSel = document.getElementById("filter-vision");
+      if (vSel && getRuleTargetType(rule) === "fov" && rule.fov) {
+        vSel.value = rule.fov;
+        rebuildCcSelect();
+        const cSel2 = document.getElementById("filter-cc");
+        if (cSel2) cSel2.value = "";
+        rebuildImageSelect();
+        const iSel2 = document.getElementById("filter-image");
+        if (iSel2) iSel2.value = "";
+      } else {
+        rebuildCascadeFilters();
+      }
+      renderTable();
+      showToast(t("toastUniversalRuleAdded"));
     });
 
     $("#btn-deploy").addEventListener("click", function () {
