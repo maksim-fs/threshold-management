@@ -1,6 +1,33 @@
 (function () {
   "use strict";
 
+  const TI = window.ThresholdI18n;
+  function tr(k) {
+    return TI && typeof TI.t === "function" ? TI.t(k) : k;
+  }
+  function trFmt(k, o) {
+    var s = tr(k);
+    if (!o) return s;
+    for (var varKey in o) {
+      if (Object.prototype.hasOwnProperty.call(o, varKey)) {
+        s = s.split("{" + varKey + "}").join(String(o[varKey]));
+      }
+    }
+    return s;
+  }
+  function metricLabel(key) {
+    if (!key) return "";
+    return tr("pxmm_m_" + key) || key;
+  }
+  function fovDisplay(name) {
+    if (name == null || name === "") return "—";
+    if (name === "—") return "—";
+    return TI && typeof TI.targetDisplayName === "function" ? TI.targetDisplayName(name) : name;
+  }
+  function lineSampleText(n, w, h) {
+    return trFmt("pxmm_lineSampleCanvas", { n: n + 1, w: w, h: h });
+  }
+
   const FOVS = [
     "CCD1-顶盖正面",
     "CCD2-左侧面",
@@ -24,22 +51,6 @@
   let thumbObjectUrls = [];
   let currentImageObjectUrl = null;
 
-  const METRIC_LABELS = {
-    center_x: "中心点X(已弃用)",
-    center_y: "中心点Y(已弃用)",
-    area: "多边形面积",
-    seg_len: "线段长度",
-    mr_len: "最小外接矩形长",
-    mr_wid: "最小外接矩形宽",
-    rect_w: "矩形边长(宽向)",
-    rect_h: "矩形边长(高向)",
-    rect_area: "矩形面积",
-    rect_diag: "矩形对角线长",
-    circ_r: "圆半径",
-    circ_d: "圆直径",
-    circ_c: "圆周长",
-    circ_a: "圆面积",
-  };
   const METRIC_KEYS = [
     "center_x",
     "center_y",
@@ -184,7 +195,7 @@
       if (lineImageQueue.length === 0) setLineFovDisplay("—");
     } else {
       if (lineImageQueue.length === 0) {
-        setLineFovDisplay("请先从产线数据导入");
+        setLineFovDisplay(tr("pxmm_pleaseImportLine"));
       }
     }
     const qs = $("line-queue");
@@ -230,7 +241,7 @@
           '">' +
           (i + 1) +
           " · " +
-          escapeHtml(x.fov) +
+          escapeHtml(fovDisplay(x.fov)) +
           " — " +
           escapeHtml(short) +
           "</option>"
@@ -254,8 +265,15 @@
         p.textContent = "—";
       } else {
         const fov = lineImageQueue[currentIdx] && lineImageQueue[currentIdx].fov;
-        p.textContent =
-          "第 " + (currentIdx + 1) + " / " + n + " 张" + (fov ? " · 视野 " + fov : "");
+        if (fov) {
+          p.textContent = trFmt("pxmm_lineProgress", {
+            cur: currentIdx + 1,
+            n: n,
+            fov: fovDisplay(fov),
+          });
+        } else {
+          p.textContent = trFmt("pxmm_lineProgressPlain", { cur: currentIdx + 1, n: n });
+        }
       }
     }
     const pbtn = $("btn-line-prev");
@@ -287,7 +305,7 @@
             .replace(/"/g, "&quot;") +
           "\" alt=\"\" width=\"80\" height=\"60\" />" +
           "<span class=\"pxmm-tile-fov\">" +
-          escapeHtml(item.fov) +
+          escapeHtml(fovDisplay(item.fov)) +
           "</span><span class=\"pxmm-tile-name\" title=\"" +
           escapeHtml(item.name || "") +
           "\">" +
@@ -313,11 +331,7 @@
       lineSessionDirty &&
       !options.skipDirtyCheck
     ) {
-      if (
-        !confirm(
-          "当前图像的标定尚未保存。切换后本图上的绘制与填写将丢失，且无法为本图再保存。确定仍要切换吗？"
-        )
-      ) {
+      if (!confirm(tr("pxmm_confirmUnsavedLine"))) {
         if (!options.skipSelect) {
           const s0 = $("line-queue");
           if (s0) s0.value = String(lineQueueLastIndex);
@@ -334,7 +348,7 @@
     lineQueueLastIndex = index;
     const item = lineImageQueue[index];
     if (!item) return;
-    setLineFovDisplay(item.fov);
+    setLineFovDisplay(fovDisplay(item.fov));
     renderLinePreviewThumbs(index);
     updateLineProgressAndNav(index);
     if (!options.skipImage) {
@@ -371,7 +385,7 @@
     revokeLineQueue();
     clearLineSessionDirty();
     if (!fileList || !fileList.length) {
-      setLineFovDisplay("请先从产线数据导入");
+      setLineFovDisplay(tr("pxmm_pleaseImportLine"));
       updateImageSourceUI();
       return;
     }
@@ -389,7 +403,7 @@
       lineQueueLastIndex = 0;
       goToLineIndex(0, { skipDirtyCheck: true });
     } else {
-      setLineFovDisplay("无有效图片");
+      setLineFovDisplay(tr("pxmm_lineNoImage"));
     }
     updateImageSourceUI();
   }
@@ -694,6 +708,71 @@
     return document.getElementById(id);
   }
 
+  function repopFovOptions() {
+    const sel = $("fov-select");
+    if (!sel) return;
+    const v = sel.value;
+    while (sel.options.length) sel.remove(0);
+    const p0 = document.createElement("option");
+    p0.value = "";
+    p0.textContent = tr("pxmm_fovPlh");
+    sel.appendChild(p0);
+    FOVS.forEach(function (f) {
+      const o = document.createElement("option");
+      o.value = f;
+      o.textContent = fovDisplay(f);
+      sel.appendChild(o);
+    });
+    var has = false;
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === v) {
+        has = true;
+        break;
+      }
+    }
+    sel.value = has ? v : "";
+  }
+
+  function onPxmmLocale() {
+    if (TI) TI.refreshAll();
+    const imgW = $("work-image");
+    if (imgW) imgW.setAttribute("alt", tr("pxmm_workImg"));
+    const dseg = $("pxmm-draw-seg");
+    if (dseg) dseg.setAttribute("aria-label", tr("pxmm_ariaMode"));
+    const stripA = $("line-preview-strip");
+    if (stripA) stripA.setAttribute("aria-label", tr("pxmm_ariaThumbs"));
+    const stog = $("pxmm-source-toggles-aria");
+    if (stog) stog.setAttribute("aria-label", tr("pxmm_sourceLabel"));
+    const cfc0 = $("clone-fov-checks");
+    if (cfc0) cfc0.setAttribute("aria-label", tr("pxmm_ariaCloneFov"));
+    const ug = $("pxmm-user-guide");
+    if (ug) ug.setAttribute("aria-label", tr("pxmm_guideH2"));
+    const lq = $("line-queue");
+    if (lq) lq.setAttribute("aria-label", tr("pxmm_lblQueue"));
+    const cm0 = $("calib-metric");
+    if (cm0) cm0.setAttribute("aria-label", tr("pxmm_thMetric"));
+    const mk = $("calib-metric") && $("calib-metric").value;
+    repopFovOptions();
+    renderManageList();
+    updateImageSourceUI();
+    if (lineImageQueue && lineImageQueue.length) {
+      populateLineQueueSelect();
+      renderLinePreviewThumbs(lineQueueLastIndex);
+      updateLineProgressAndNav(lineQueueLastIndex);
+    }
+    updateMetricSelectPreferred(mk);
+    updateDrawingToolButtons();
+    updateStats();
+    var eid = ($("edit-record-id") && ($("edit-record-id").value || "").trim());
+    if ($("btn-save-calib")) {
+      $("btn-save-calib").textContent = eid ? tr("pxmm_saveUpd") : tr("pxmm_save");
+    }
+    updateCalibPreview();
+    if (cloneSourceId) {
+      openCloneDialog(cloneSourceId);
+    }
+  }
+
   function dist(a, b) {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
@@ -908,7 +987,7 @@
     if (!sel) return;
     const keys = getMetricOptionsForTool(drawTool);
     const opts = keys.map(function (k) {
-      return { value: k, label: METRIC_LABELS[k] || k };
+      return { value: k, label: metricLabel(k) || k };
     });
     sel.innerHTML = opts
       .map(function (o) {
@@ -943,21 +1022,20 @@
     const hint = $("pxmm-drawing-hint");
     if (hint) {
       if (drawTool === "poly") {
-        hint.textContent =
-          "多边形：依次点击顶点；至少 3 点后可点「闭合多边形」或**右键**闭合。原点 (0,0) 在左上角。";
+        hint.textContent = tr("pxmm_hintDraw");
       } else if (drawTool === "line") {
-        hint.textContent = "直线：在图上点两个端点，将自动用线段标定。原点 (0,0) 在左上角。";
+        hint.textContent = tr("pxmm_hintLine");
       } else if (drawTool === "rect") {
-        hint.textContent = "轴对齐矩形：点两个对角，得到与屏幕轴平行的矩形。原点 (0,0) 在左上角。";
+        hint.textContent = tr("pxmm_hintRect");
       } else {
-        hint.textContent = "圆：先点圆心，再点圆周上一点确定半径。原点 (0,0) 在左上角。";
+        hint.textContent = tr("pxmm_hintCircle");
       }
     }
   }
 
   function setDrawTool(next) {
     if (next === drawTool) return;
-    if (vertices.length > 0 && !confirm("切换绘制方式将清空当前图形。确定吗？")) return;
+    if (vertices.length > 0 && !confirm(tr("pxmm_confirmSwitchTool"))) return;
     drawTool = next;
     vertices = [];
     closed = false;
@@ -1144,36 +1222,36 @@
     if (!el) return;
     recomputeLastMetrics();
     if (!isShapeCompleteForCurrentTool() || !lastMetrics) {
-      const hint =
+      const key =
         drawTool === "poly"
-          ? "多边形：依次点击顶点，至少 3 个点后点「闭合多边形」或<strong>右键</strong>闭合。"
+          ? "pxmm_stat_incomplete_poly"
           : drawTool === "line"
-            ? "直线：在图上点击两个端点。"
+            ? "pxmm_stat_incomplete_line"
             : drawTool === "rect"
-              ? "矩形：点击两个对角，形成与屏幕边平行的矩形。"
-              : "圆：先点圆心，再点圆周上一点。";
+              ? "pxmm_stat_incomplete_rect"
+              : "pxmm_stat_incomplete_circle";
       el.innerHTML =
-        "<p class=\"pxmm-stat\" style=\"margin:0;color:var(--text-secondary);\">" + hint + "</p>";
+        "<p class=\"pxmm-stat\" style=\"margin:0;color:var(--text-secondary);\">" + tr(key) + "</p>";
       updateCalibPreview();
       return;
     }
     const rows = [];
     if (drawTool === "line") {
-      rows.push(['<dt>线段长度（px）</dt><dd>', "seg_len", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_seg") + "</dt><dd>", "seg_len", "</dd>"]);
     } else if (drawTool === "rect") {
-      rows.push(['<dt>边长 W（px）</dt><dd>', "rect_w", "</dd>"]);
-      rows.push(['<dt>边长 H（px）</dt><dd>', "rect_h", "</dd>"]);
-      rows.push(['<dt>矩形面积（px²）</dt><dd>', "rect_area", "</dd>"]);
-      rows.push(['<dt>对角线长（px）</dt><dd>', "rect_diag", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_rectw") + "</dt><dd>", "rect_w", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_recth") + "</dt><dd>", "rect_h", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_recta") + "</dt><dd>", "rect_area", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_rectd") + "</dt><dd>", "rect_diag", "</dd>"]);
     } else if (drawTool === "circle") {
-      rows.push(['<dt>半径（px）</dt><dd>', "circ_r", "</dd>"]);
-      rows.push(['<dt>直径（px）</dt><dd>', "circ_d", "</dd>"]);
-      rows.push(['<dt>周长（px）</dt><dd>', "circ_c", "</dd>"]);
-      rows.push(['<dt>圆面积（px²）</dt><dd>', "circ_a", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_cr") + "</dt><dd>", "circ_r", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_cd") + "</dt><dd>", "circ_d", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_cc") + "</dt><dd>", "circ_c", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_ca") + "</dt><dd>", "circ_a", "</dd>"]);
     } else {
-      rows.push(['<dt>多边形面积（px²）</dt><dd>', "area", "</dd>"]);
-      rows.push(['<dt>最小外接矩形长（px）</dt><dd>', "mr_len", "</dd>"]);
-      rows.push(['<dt>最小外接矩形宽（px）</dt><dd>', "mr_wid", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_polya") + "</dt><dd>", "area", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_mrl") + "</dt><dd>", "mr_len", "</dd>"]);
+      rows.push(['<dt>' + tr("pxmm_statdt_mrw") + "</dt><dd>", "mr_wid", "</dd>"]);
     }
     const parts = rows
       .map(function (r) {
@@ -1210,33 +1288,17 @@
     const mm = parseFloat(mmStr);
     const px = getPreviewPxValue();
     if (px == null || px <= 0 || !Number.isFinite(mm)) {
-      out.innerHTML = "选择转化项并输入有效的毫米值后，将显示换算关系。";
+      out.innerHTML = tr("pxmm_prev_empty");
       return;
     }
     const metric = $("calib-metric").value;
-    let text = "";
     if (metricIsAreaKey(metric)) {
       const mm2PerPx2 = mm / (px * px);
-      text =
-        "<strong>面积毫米转化</strong>：标定项像素量 <strong>" +
-        fmt(px) +
-        " px²</strong> 对应 <strong>" +
-        fmt(mm) +
-        " mm²</strong>。<br>换算：<strong>1 px² ≈ " +
-        fmt(mm2PerPx2) +
-        " mm²</strong>。";
+      out.innerHTML = trFmt("pxmm_prev_area", { px: fmt(px), mm: fmt(mm), r: fmt(mm2PerPx2) });
     } else {
       const mmPerPx = mm / px;
-      text =
-        "<strong>长度毫米转化</strong>：像素量 <strong>" +
-        fmt(px) +
-        " px</strong> 对应 <strong>" +
-        fmt(mm) +
-        " mm</strong>。<br>换算：<strong>1 px ≈ " +
-        fmt(mmPerPx) +
-        " mm</strong>。";
+      out.innerHTML = trFmt("pxmm_prev_len", { px: fmt(px), mm: fmt(mm), r: fmt(mmPerPx) });
     }
-    out.innerHTML = text;
   }
 
   function loadRecords() {
@@ -1336,7 +1398,9 @@
     });
     if (list.length === 0) {
       tbody.innerHTML =
-        '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-secondary);">暂无毫米转化记录。点击「新增毫米转化」开始。</td></tr>';
+        '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-secondary);">' +
+        escapeHtml(tr("pxmm_emptyList")) +
+        "</td></tr>";
       return;
     }
     tbody.innerHTML = list
@@ -1351,22 +1415,27 @@
           '<td class="col-thumb"><img class="pxmm-thumb" alt="" width="80" height="60" style="object-fit:cover;border-radius:4px;border:1px solid var(--border);background:#f5f5f5" /></td>' +
           "<td class=\"pxmm-fov-cell\">" +
           (function () {
-            let t = "<span class=\"pxmm-fov-name\">" + escapeHtml(r.fov || "") + "</span>";
+            var rowFov = r.fov || "";
+            var t = "<span class=\"pxmm-fov-name\">" + escapeHtml(fovDisplay(rowFov)) + "</span>";
             if (r.cloneOf) {
               const src0 = list.find(function (x) {
                 return x.id === r.cloneOf;
               });
-              const srcF = src0 ? src0.fov : "源已删除";
+              const srcF = src0 ? src0.fov : null;
+              const srcDisp = srcF != null ? fovDisplay(srcF) : tr("pxmm_sourceDeleted");
               t +=
-                "<div class=\"pxmm-clone-line\"><span class=\"pxmm-clone-pill\" title=\"与源标定共享数据；点「编辑」将打开源视野\">链自 " +
-                escapeHtml(srcF) +
+                "<div class=\"pxmm-clone-line\"><span class=\"pxmm-clone-pill\" title=\"" +
+                escapeHtml(tr("pxmm_chainPillTitle")) +
+                "\">" +
+                escapeHtml(tr("pxmm_chainFrom")) +
+                escapeHtml(srcDisp) +
                 "</span></div>";
             }
             return t;
           })() +
           "</td>" +
           "<td>" +
-          escapeHtml(METRIC_LABELS[r.metric] || r.metric) +
+          escapeHtml(metricLabel(r.metric) || r.metric) +
           "</td>" +
           "<td>" +
           escapeHtml(fmt(r.pxValue)) +
@@ -1382,9 +1451,15 @@
           escapeHtml(formatSavedAt(r.savedAt)) +
           "</td>" +
           '<td><div class="cell-inner" style="justify-content:center;flex-wrap:wrap;gap:2px 6px;max-width:220px">' +
-          '<button type="button" class="text-btn btn-manage-edit">编辑</button>' +
-          '<button type="button" class="text-btn btn-manage-clone">克隆</button>' +
-          '<button type="button" class="text-btn danger btn-manage-del">删除</button>' +
+          '<button type="button" class="text-btn btn-manage-edit">' +
+          escapeHtml(tr("pxmm_op_edit")) +
+          "</button>" +
+          '<button type="button" class="text-btn btn-manage-clone">' +
+          escapeHtml(tr("pxmm_op_clone")) +
+          "</button>" +
+          '<button type="button" class="text-btn danger btn-manage-del">' +
+          escapeHtml(tr("pxmm_op_delete")) +
+          "</button>" +
           "</div></td>" +
           "</tr>"
         );
@@ -1396,19 +1471,19 @@
       if (!img) return;
       idbGetBlob(r.id).then(function (blob) {
         if (!blob) {
-          img.alt = "无参考图";
+          img.alt = tr("pxmm_altNoRef");
           return;
         }
         buildThumbObjectUrl(blob, r.polygon, r.drawTool).then(function (u) {
           if (!u) {
-            img.alt = "无参考图";
+            img.alt = tr("pxmm_altNoRef");
             return;
           }
           thumbObjectUrls.push(u);
           img.src = u;
           const dt = r.drawTool || (r.polygon && r.polygon.length === 2 ? "line" : "poly");
           const minP = minPolyPointsForTool(dt);
-          img.alt = r.polygon && r.polygon.length >= minP ? "参考图与标定" : "参考图";
+          img.alt = r.polygon && r.polygon.length >= minP ? tr("pxmm_altRefCalib") : tr("pxmm_workImg");
         });
       });
     });
@@ -1440,15 +1515,12 @@
     const desc = $("clone-source-desc");
     if (desc) {
       desc.textContent =
-        "源：" +
-        (rec.fov || "—") +
+        tr("pxmm_cloneSourcePrefix") +
+        fovDisplay(rec.fov || "—") +
         " · " +
-        (METRIC_LABELS[rec.metric] || rec.metric) +
-        "（像素 " +
-        fmt(rec.pxValue) +
-        " / 毫米 " +
-        fmt(rec.mmValue) +
-        "）";
+        (metricLabel(rec.metric) || rec.metric) +
+        " " +
+        trFmt("pxmm_cloneSourceTail", { px: fmt(rec.pxValue), mm: fmt(rec.mmValue) });
     }
     const box = $("clone-fov-checks");
     if (box) {
@@ -1461,7 +1533,7 @@
             "<label class=\"pxmm-clone-label\"><input type=\"checkbox\" name=\"clone-fov\" value=\"" +
             fov.replace(/&/g, "&amp;").replace(/"/g, "&quot;") +
             "\" /> " +
-            escapeHtml(fov) +
+            escapeHtml(fovDisplay(fov)) +
             "</label>"
           );
         })
@@ -1597,13 +1669,14 @@
       const src = list.find(function (x) {
         return x.id === rec.cloneOf;
       });
-      const srcFov = src && src.fov ? src.fov : "已删除的源";
+      const srcFov = src && src.fov ? fovDisplay(src.fov) : tr("pxmm_sourceDeleted");
       el.style.display = "block";
       el.removeAttribute("hidden");
+      const rowFovL = rec.fov ? fovDisplay(rec.fov) : tr("pxmm_fovThis");
       el.innerHTML =
         "<div class=\"pxmm-clone-notice-body\">" +
         "<p class=\"pxmm-clone-edit-p\">本行 <strong class=\"pxmm-hl\">" +
-        escapeHtml(rec.fov || "本视野") +
+        escapeHtml(rowFovL) +
         "</strong> 由 <strong class=\"pxmm-hl\">" +
         escapeHtml(srcFov) +
         "</strong> 链出。您可在当前页面<strong>下方「图像来源」</strong>为<strong>本视野</strong>重新选图/换图、重新绘制多边形；保存后将成为<strong>本视野的独立标定</strong>并不再显示「链自」。</p>" +
@@ -1642,7 +1715,7 @@
     $("calib-px-wrap").style.display = "block";
     $("calib-px").value = String(rec.pxValue != null ? rec.pxValue : "");
     $("btn-cancel-edit").style.display = "inline-block";
-    $("btn-save-calib").textContent = "更新毫米转化";
+    $("btn-save-calib").textContent = tr("pxmm_saveUpd");
     if (!opts.fromSourceButton) {
       updateCloneChainNotice(rec);
     } else {
@@ -1690,7 +1763,7 @@
     $("calib-px-wrap").style.display = "none";
     $("calib-px").value = "";
     $("btn-cancel-edit").style.display = "none";
-    $("btn-save-calib").textContent = "保存毫米转化";
+    $("btn-save-calib").textContent = tr("pxmm_save");
     setSourcePanelVisible(true);
     clearCloneChainNotice();
     updateCalibPreview();
@@ -1983,20 +2056,19 @@
     }
     g.fillStyle = "rgba(0,0,0,0.55)";
     g.font = "600 18px system-ui, 'Noto Sans SC', sans-serif";
-    g.fillText("产线示例图 " + (seed + 1) + "（" + w + "×" + h + "）", 24, 40);
+    g.fillText(lineSampleText(seed, w, h), 24, 40);
     return c.toDataURL("image/png");
   }
 
   function bindUI() {
     migrateOldStorage();
 
-    const sel = $("fov-select");
-    FOVS.forEach(function (f) {
-      const o = document.createElement("option");
-      o.value = f;
-      o.textContent = f;
-      sel.appendChild(o);
-    });
+    repopFovOptions();
+    document.addEventListener("threshold:locale", onPxmmLocale);
+    if (TI) {
+      TI.wireLangButton();
+      TI.refreshAll();
+    }
 
     const radios = document.querySelectorAll('input[name="pxmm-image-source"]');
     radios.forEach(function (r) {
@@ -2194,7 +2266,7 @@
         openCloneDialog(id);
       }
       if (e.target.classList.contains("btn-manage-del")) {
-        if (!confirm("确定删除该条毫米转化记录及其参考图？")) return;
+        if (!confirm(tr("pxmm_confirmDeleteRecord"))) return;
         idbDeleteBlob(id).then(
           function () {},
           function () {}
@@ -2253,6 +2325,10 @@
     updateImageSourceUI();
     showManageView();
     renderManageList();
+    const eid0 = ($("edit-record-id") && ($("edit-record-id").value || "").trim());
+    if ($("btn-save-calib")) {
+      $("btn-save-calib").textContent = eid0 ? tr("pxmm_saveUpd") : tr("pxmm_save");
+    }
   }
 
   if (document.readyState === "loading") {

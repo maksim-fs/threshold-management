@@ -9,31 +9,36 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body data-i18n-doc="docTitle">
   <div class="app">
     <header class="top-header">
       <div class="brand">
-        <span class="brand-title">生产数据</span>
-        <span class="brand-meta">v2.1 · 2026-04-21</span>
+        <span class="brand-title" data-i18n="brandTitle">生产数据</span>
+        <span class="brand-meta" data-i18n="brandMeta">v2.1 · 2026-04-21</span>
       </div>
       <nav class="main-tabs">
-        <button type="button" class="main-tab">产线数据</button>
-        <button type="button" class="main-tab is-active">阈值管理</button>
-        <button type="button" class="main-tab">产线数据模拟</button>
+        <button type="button" class="main-tab" data-i18n="tabLine">产线数据</button>
+        <button type="button" class="main-tab is-active" data-i18n="tabThreshold">阈值管理</button>
+        <button type="button" class="main-tab" data-i18n="tabLineSim">产线数据模拟</button>
       </nav>
       <div class="header-right">
-        <span class="user-pill">admin</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-lang" title="English">English</button>
+        <span class="user-pill" data-i18n="userPill">admin</span>
       </div>
     </header>
 
     <div class="version-bar">
-      <span class="version-text">正在运行的阈值版本 <strong>2026-04-20 13:46:30</strong></span>
+      <span class="version-text"
+        ><span data-i18n="versionRun">正在运行的阈值版本</span> <strong>2026-04-20 13:46:30</strong></span
+      >
       <div class="version-actions">
-        <button type="button" class="btn btn-ghost btn-sm" id="btn-io">导入/导出</button>
-        <a href="pixel-mm-tool.html" class="btn btn-ghost btn-sm" style="text-decoration:none;" title="毫米转化管理">像素/毫米</a>
-        <button type="button" class="btn btn-ghost btn-sm" id="btn-custom-threshold">定制化阈值</button>
-        <button type="button" class="btn btn-ghost btn-sm" id="btn-roi">ROI 阈值</button>
-        <button type="button" class="btn btn-primary btn-sm" id="btn-deploy">部署阈值</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-io" data-i18n="btnIo">导入/导出</button>
+        <a href="pixel-mm-tool.html" class="btn btn-ghost btn-sm" id="link-pixel-mm" style="text-decoration:none;" data-i18n="linkPixelMm" title="毫米与像素对应管理"
+          >像素/毫米</a
+        >
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-custom-threshold" data-i18n="btnCustom">定制化阈值</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-roi" data-i18n="btnRoi">ROI 阈值</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-deploy" data-i18n="btnDeploy">部署阈值</button>
       </div>
     </div>
 
@@ -48,18 +53,7 @@
       <main class="workspace">
         <div class="toolbar">
           <div class="toolbar-left">
-            <select class="select" id="filter-fov">
-              <option value="">所有视野/ROI 阈值</option>
-              <option value="CCD1-顶盖正面">CCD1-顶盖正面</option>
-              <option value="CCD2-左侧面">CCD2-左侧面</option>
-              <option value="CCD3-右侧面">CCD3-右侧面</option>
-              <option value="CCD4-头部">CCD4-头部</option>
-              <option value="CCD4-尾部">CCD4-尾部</option>
-              <option value="CCD4-顶盖背面">CCD4-顶盖背面</option>
-              <option value="注液孔ROI">注液孔ROI</option>
-              <option value="蓝膜ROI">蓝膜ROI</option>
-              <option value="顶盖二维码ROI">顶盖二维码ROI</option>
-            </select>
+            <select class="select" id="filter-fov"></select>
             <select class="select" id="filter-status">
               <option value="">所有状态</option>
               <option value="enabled">启用</option>
@@ -68,7 +62,7 @@
             <label class="toggle">
               <input type="checkbox" id="toggle-unconfigured" />
               <span class="toggle-slider"></span>
-              <span>未配置特征</span>
+              <span data-i18n="toggleUnconfig">未配置特征</span>
             </label>
             <select class="select" id="sort-by">
               <option value="created">按创建时间排序</option>
@@ -78,20 +72,20 @@
               <option value="asc">升序 ↑</option>
             </select>
           </div>
-          <button type="button" class="btn btn-primary" id="btn-create-universal">创建通用阈值</button>
+          <button type="button" class="btn btn-primary" id="btn-create-universal" data-i18n="btnCreateUniversal">创建通用阈值</button>
         </div>
 
         <div class="table-wrap">
           <table class="threshold-table">
             <thead>
               <tr>
-                <th class="col-idx">#</th>
-                <th>视野/ROI 阈值</th>
-                <th>判断结果</th>
-                <th>状态</th>
-                <th>缺陷判定条件 ①</th>
-                <th>缺陷判定条件 ②</th>
-                <th class="col-actions">操作</th>
+                <th class="col-idx" data-i18n="thColIdx">#</th>
+                <th data-i18n="thFovRoi">视野/ROI 阈值</th>
+                <th data-i18n="thResult">判断结果</th>
+                <th data-i18n="thStatus">状态</th>
+                <th data-i18n="thC1">缺陷判定条件 ①</th>
+                <th data-i18n="thC2">缺陷判定条件 ②</th>
+                <th class="col-actions" data-i18n="thAction">操作</th>
               </tr>
             </thead>
             <tbody id="rules-body"></tbody>
@@ -99,7 +93,7 @@
         </div>
 
         <div class="table-footer">
-          <button type="button" class="btn btn-outline" id="btn-add-row">+ 添加阈值行</button>
+          <button type="button" class="btn btn-outline" id="btn-add-row" data-i18n="btnAddRow">+ 添加阈值行</button>
         </div>
       </main>
     </div>
@@ -107,17 +101,18 @@
 
   <div class="modal-backdrop" id="io-modal" aria-hidden="true">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="io-modal-title">
-      <h2 class="modal-title" id="io-modal-title">导入 / 导出</h2>
-      <p class="modal-desc">请选择要执行的操作。</p>
+      <h2 class="modal-title" id="io-modal-title" data-i18n="modalIoTitle">导入 / 导出</h2>
+      <p class="modal-desc" data-i18n="modalIoDesc">请选择要执行的操作。</p>
       <div class="modal-actions">
-        <button type="button" class="btn btn-primary" id="io-choose-import">导入</button>
-        <button type="button" class="btn btn-outline" id="io-choose-export">导出</button>
-        <button type="button" class="btn btn-ghost" id="io-modal-cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="io-choose-import" data-i18n="modalImport">导入</button>
+        <button type="button" class="btn btn-outline" id="io-choose-export" data-i18n="modalExport">导出</button>
+        <button type="button" class="btn btn-ghost" id="io-modal-cancel" data-i18n="modalCancel">取消</button>
       </div>
     </div>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -40,26 +40,37 @@
     }
   </style>
 </head>
-<body>
+<body data-subpage="custom" data-i18n-doc="docTitleCustom">
   <div class="app">
     <header class="top-header">
       <div class="brand">
-        <span class="brand-title">生产数据</span>
-        <span class="brand-meta">定制化阈值</span>
+        <span class="brand-title" data-i18n="sub_sp_brand">生产数据</span>
+        <span class="brand-meta" data-i18n="sub_custom_meta">定制化阈值</span>
       </div>
       <nav class="main-tabs">
-        <a href="index.html" class="main-tab">← 返回阈值管理</a>
+        <a href="index.html" class="main-tab" data-i18n="btnBackTmpl" id="sp-back">← 返回阈值管理</a>
       </nav>
       <div class="header-right">
-        <span class="user-pill">admin</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-lang" title="English">English</button>
+        <span class="user-pill" data-i18n="userPill">admin</span>
       </div>
     </header>
 
     <main class="custom-page">
-      <h1>定制化阈值</h1>
-      <p>此页面用于定制化阈值相关配置。具体内容可在后续迭代中补充。</p>
-      <a href="index.html" class="btn btn-primary">返回阈值管理</a>
+      <h1 data-i18n="sub_custom_h1" id="sp-h1">定制化阈值</h1>
+      <p data-i18n="sub_custom_lead" id="sp-lead">此页面用于定制化阈值相关配置。具体内容可在后续迭代中补充。</p>
+      <a href="index.html" class="btn btn-primary" data-i18n="sub_custom_btn" id="sp-btn">返回阈值管理</a>
     </main>
   </div>
+  <script src="i18n.js"></script>
+  <script>
+    (function () {
+      var TI = window.ThresholdI18n;
+      if (TI) {
+        TI.wireLangButton();
+        TI.refreshAll();
+      }
+    })();
+  </script>
 </body>
 </html>

@@ -89,6 +89,22 @@ body {
   background: var(--primary-soft);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+#btn-lang {
+  min-width: 4.5em;
+}
+
+body.lang-en {
+  font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
 .user-pill {
   font-size: 13px;
   color: var(--text-secondary);

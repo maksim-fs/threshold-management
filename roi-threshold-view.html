@@ -40,36 +40,49 @@
     }
   </style>
 </head>
-<body>
+<body data-subpage="roi" data-i18n-doc="docTitleRoi">
   <div class="app">
     <header class="top-header">
       <div class="brand">
-        <span class="brand-title">生产数据</span>
-        <span class="brand-meta">ROI 阈值查看</span>
+        <span class="brand-title" data-i18n="sub_sp_brand">生产数据</span>
+        <span class="brand-meta" data-i18n="sub_roi_brandMeta" id="sp-brand-meta">ROI 阈值查看</span>
       </div>
       <nav class="main-tabs">
-        <a href="index.html" class="main-tab" style="text-decoration:none;color:inherit;">返回阈值管理</a>
+        <a href="index.html" class="main-tab" style="text-decoration:none;color:inherit" data-i18n="btnBackTmpl" id="sp-back">返回阈值管理</a>
       </nav>
       <div class="header-right">
-        <span class="user-pill">admin</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-lang" title="English">English</button>
+        <span class="user-pill" data-i18n="userPill">admin</span>
       </div>
     </header>
 
     <main class="roi-view">
       <section class="roi-card">
-        <h1>ROI 阈值明细（占位页）</h1>
+        <h1 data-i18n="sub_roi_h1" id="sp-h1">ROI 阈值明细（占位页）</h1>
         <p class="roi-name" id="roi-name">ROI：-</p>
-        <p class="roi-tip">这里是 ROI 阈值下一级页面，后续你给我具体字段后我再补全界面和交互。</p>
-        <a href="index.html" class="btn btn-primary">返回</a>
+        <p class="roi-tip" data-i18n="sub_roi_lead" id="sp-lead">这里是 ROI 阈值下一级页面，后续你给我具体字段后我再补全界面和交互。</p>
+        <a href="index.html" class="btn btn-primary" data-i18n="sub_roi_btn" id="sp-btn">返回</a>
       </section>
     </main>
   </div>
 
+  <script src="i18n.js"></script>
   <script>
     (function () {
+      var TI = window.ThresholdI18n;
+      if (!TI) return;
       var q = new URLSearchParams(window.location.search);
-      var name = q.get("name") || "-";
-      document.getElementById("roi-name").textContent = "ROI：" + name;
+      var raw = q.get("name") || "-";
+      function updateRoiName() {
+        var el = document.getElementById("roi-name");
+        if (!el) return;
+        var label = TI.targetDisplayName(raw);
+        el.textContent = TI.t("sub_roi_name_prefix") + label;
+      }
+      TI.wireLangButton();
+      document.addEventListener("threshold:locale", updateRoiName);
+      TI.refreshAll();
+      updateRoiName();
     })();
   </script>
 </body>
