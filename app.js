@@ -17,11 +17,63 @@
     { value: "between", label: "介于" },
   ];
 
-  const RESULTS = [
-    { value: "ng", label: "NG" },
-    { value: "limit", label: "Limit" },
-    { value: "not_detected_ng", label: "未检出时判 NG" },
-  ];
+  const RESULT_VALS = ["ng", "limit", "not_detected_ng"];
+
+  const TI = window.ThresholdI18n;
+  if (!TI) {
+    throw new Error("i18n.js must load before app.js");
+  }
+  function t(k) {
+    return TI.t(k);
+  }
+  function getLang() {
+    return TI.getLang();
+  }
+  function setLang(l) {
+    return TI.setLang(l);
+  }
+
+  function postIndexI18n() {
+    if (!document.getElementById("filter-fov")) return;
+    rebuildFovFilter();
+    const fstat = document.getElementById("filter-status");
+    if (fstat) {
+      if (fstat.options[0]) fstat.options[0].textContent = t("filterAllStatus");
+      if (fstat.options[1]) fstat.options[1].textContent = t("stEnabled");
+      if (fstat.options[2]) fstat.options[2].textContent = t("stDisabled");
+    }
+    const sby = document.getElementById("sort-by");
+    if (sby && sby.options[0]) sby.options[0].textContent = t("sortByCreated");
+    const sdr = document.getElementById("sort-dir");
+    if (sdr) {
+      if (sdr.options[0]) sdr.options[0].textContent = t("sortDesc");
+      if (sdr.options[1]) sdr.options[1].textContent = t("sortAsc");
+    }
+    const fsearch = document.getElementById("feature-search");
+    if (fsearch) fsearch.setAttribute("placeholder", t("searchPlaceholder"));
+  }
+
+  function applyPageI18n() {
+    TI.refreshAll();
+    postIndexI18n();
+  }
+
+  function attrT(value) {
+    return t("attr_" + value);
+  }
+
+  function resLabelByValue(v) {
+    if (v === "not_detected_ng") return t("res_notdet");
+    if (v === "limit") return t("res_limit");
+    return t("res_ng");
+  }
+
+  function opLabelValue(op) {
+    if (op === "between") return t("op_between");
+    if (op === "gte") return "≥";
+    if (op === "lte") return "≤";
+    return op;
+  }
 
   const FOVS = [
     "CCD1-顶盖正面",
@@ -32,6 +84,41 @@
     "CCD4-顶盖背面",
   ];
   const ROI_TARGETS = ["注液孔ROI", "蓝膜ROI", "顶盖二维码ROI"];
+
+  function targetDisplayName(internal) {
+    return TI.targetDisplayName(internal);
+  }
+
+  function rebuildFovFilter() {
+    const sel = document.getElementById("filter-fov");
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = "";
+    const o0 = document.createElement("option");
+    o0.value = "";
+    o0.textContent = t("filterAllFovRoi");
+    sel.appendChild(o0);
+    FOVS.forEach(function (f) {
+      const o = document.createElement("option");
+      o.value = f;
+      o.textContent = targetDisplayName(f);
+      sel.appendChild(o);
+    });
+    ROI_TARGETS.forEach(function (r) {
+      const o = document.createElement("option");
+      o.value = r;
+      o.textContent = targetDisplayName(r);
+      sel.appendChild(o);
+    });
+    var has = false;
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === prev) {
+        has = true;
+        break;
+      }
+    }
+    sel.value = has ? prev : "";
+  }
 
   /** 与「像素/毫米」工具共用，毫米转化记录 */
   const LS_PXMM_RECORDS = "pxmm_convert_records_v1";
@@ -262,7 +349,17 @@
     ul.innerHTML = "";
     FEATURES.forEach(function (f) {
       if (onlyUnconfigured && f.configured) return;
-      if (q && !f.name.toLowerCase().includes(q) && !f.id.toLowerCase().includes(q)) return;
+      const disp = t("feature_" + f.id);
+      const dispZh = TI.I18N.zh["feature_" + f.id] != null ? TI.I18N.zh["feature_" + f.id] : f.name;
+      const enLab = (TI.I18N.en["feature_" + f.id] && TI.I18N.en["feature_" + f.id].toString()) || "";
+      if (q) {
+        const hit =
+          disp.toLowerCase().includes(q) ||
+          String(dispZh).toLowerCase().includes(q) ||
+          enLab.toLowerCase().includes(q) ||
+          f.id.toLowerCase().includes(q);
+        if (!hit) return;
+      }
       const li = document.createElement("li");
       li.className = "feature-item" + (f.id === activeFeatureId ? " is-active" : "");
       li.dataset.id = f.id;
@@ -273,7 +370,7 @@
         '">' +
         icon +
         "</span><span>" +
-        escapeHtml(f.name) +
+        escapeHtml(disp) +
         "</span>";
       li.addEventListener("click", function () {
         activeFeatureId = f.id;
@@ -297,22 +394,6 @@
     return String(raw).replace(/\D/g, "");
   }
 
-  function selectOptions(list, current) {
-    return list
-      .map(function (o) {
-        return (
-          '<option value="' +
-          escapeHtml(o.value) +
-          '"' +
-          (o.value === current ? " selected" : "") +
-          ">" +
-          escapeHtml(o.label) +
-          "</option>"
-        );
-      })
-      .join("");
-  }
-
   function fovOptions(current) {
     return FOVS.map(function (f) {
       return (
@@ -321,7 +402,7 @@
         '"' +
         (f === current ? " selected" : "") +
         ">" +
-        escapeHtml(f) +
+        escapeHtml(targetDisplayName(f)) +
         "</option>"
       );
     }).join("");
@@ -409,22 +490,24 @@
     if (rec.metric === "area") {
       const mm2PerPx2 = mmCal / pxCal;
       if (!(mm2PerPx2 > 0)) return "";
+      const pOpen = getLang() === "en" ? " (≈ " : "（≈ ";
       if (attrUsesAreaPx2(attr)) {
         const mm2 = px * mm2PerPx2;
-        return "（≈ " + fmtMmTwoDecimals(mm2) + " mm²）";
+        return pOpen + fmtMmTwoDecimals(mm2) + (getLang() === "en" ? " mm²)" : " mm²）");
       }
       const mmPerPx = Math.sqrt(mm2PerPx2);
       const mmLin = px * mmPerPx;
-      return "（≈ " + fmtMmTwoDecimals(mmLin) + " mm）";
+      return pOpen + fmtMmTwoDecimals(mmLin) + (getLang() === "en" ? " mm)" : " mm）");
     }
+    const pOpen2 = getLang() === "en" ? " (≈ " : "（≈ ";
     const mmPerPx = mmCal / pxCal;
     if (!(mmPerPx > 0)) return "";
     if (attrUsesAreaPx2(attr)) {
       const mm2 = px * mmPerPx * mmPerPx;
-      return "（≈ " + fmtMmTwoDecimals(mm2) + " mm²）";
+      return pOpen2 + fmtMmTwoDecimals(mm2) + (getLang() === "en" ? " mm²)" : " mm²）");
     }
     const mmLin = px * mmPerPx;
-    return "（≈ " + fmtMmTwoDecimals(mmLin) + " mm）";
+    return pOpen2 + fmtMmTwoDecimals(mmLin) + (getLang() === "en" ? " mm)" : " mm）");
   }
 
   function updateRowMmHints(tr, rule) {
@@ -446,27 +529,35 @@
 
   function renderTargetName(rule) {
     const name = getRuleTargetName(rule);
+    const show = targetDisplayName(name);
     if (getRuleTargetType(rule) === "roi") {
       return (
         '<span class="target-name">' +
-        escapeHtml(name) +
+        escapeHtml(show) +
         '<span class="target-badge">ROI</span></span>'
       );
     }
-    return escapeHtml(name);
+    return escapeHtml(show);
   }
 
   function renderCond(prefix, cond, disabled) {
     if (disabled) {
+      const ndT = t("condNDTitle");
       return (
         '<div class="cond-group is-disabled" data-cond="' +
         prefix +
         '">' +
-        '<select class="cond-select" disabled title="未检出时判 NG 无需条件">' +
+        '<select class="cond-select" disabled title="' +
+        escapeHtml(ndT) +
+        '">' +
         '<option value=""></option></select>' +
-        '<select class="cond-select" disabled title="未检出时判 NG 无需条件">' +
+        '<select class="cond-select" disabled title="' +
+        escapeHtml(ndT) +
+        '">' +
         '<option value=""></option></select>' +
-        '<input type="text" class="cond-input" disabled value="" title="未检出时判 NG 无需条件" />' +
+        '<input type="text" class="cond-input" disabled value="" title="' +
+        escapeHtml(ndT) +
+        '" />' +
         "</div>"
       );
     }
@@ -483,7 +574,7 @@
         '"' +
         (a.value === cond.attr ? " selected" : "") +
         ">" +
-        escapeHtml(a.label) +
+        escapeHtml(attrT(a.value)) +
         "</option>"
       );
     }).join("");
@@ -494,17 +585,22 @@
         '"' +
         (o.value === cond.op ? " selected" : "") +
         ">" +
-        escapeHtml(o.label) +
+        escapeHtml(opLabelValue(o.value)) +
         "</option>"
       );
     }).join("");
 
+    const tPt = t("phTitle");
     const valBlock = between
       ? '<span class="cond-between">' +
         '<span class="cond-val-inline">' +
         '<input type="text" inputmode="numeric" pattern="[0-9]*" class="cond-input cond-input--narrow" data-field="v1" value="' +
         escapeHtml(cond.v1) +
-        '" placeholder="下限(px)" title="像素，仅整数" ' +
+        '" placeholder="' +
+        escapeHtml(t("phLower")) +
+        '" title="' +
+        escapeHtml(tPt) +
+        '" ' +
         (disabled ? "disabled" : "") +
         "/>" +
         mmHint("v1") +
@@ -513,7 +609,11 @@
         '<span class="cond-val-inline">' +
         '<input type="text" inputmode="numeric" pattern="[0-9]*" class="cond-input cond-input--narrow" data-field="v2" value="' +
         escapeHtml(cond.v2) +
-        '" placeholder="上限(px)" title="像素，仅整数" ' +
+        '" placeholder="' +
+        escapeHtml(t("phUpper")) +
+        '" title="' +
+        escapeHtml(tPt) +
+        '" ' +
         (disabled ? "disabled" : "") +
         "/>" +
         mmHint("v2") +
@@ -522,7 +622,11 @@
       : '<span class="cond-val-inline">' +
         '<input type="text" inputmode="numeric" pattern="[0-9]*" class="cond-input" data-field="v1" value="' +
         escapeHtml(cond.v1) +
-        '" placeholder="像素(整数)" title="像素，仅整数" ' +
+        '" placeholder="' +
+        escapeHtml(t("phPixel")) +
+        '" title="' +
+        escapeHtml(tPt) +
+        '" ' +
         (disabled ? "disabled" : "") +
         "/>" +
         mmHint("v1") +
@@ -559,11 +663,15 @@
     });
     const sortBy = $("#sort-by").value;
     const dirMul = $("#sort-dir").value === "asc" ? 1 : -1;
-    if (sortBy === "created") {
-      rows.sort(function (a, b) {
+    rows.sort(function (a, b) {
+      const aRoi = getRuleTargetType(a) === "roi" ? 1 : 0;
+      const bRoi = getRuleTargetType(b) === "roi" ? 1 : 0;
+      if (aRoi !== bRoi) return aRoi - bRoi;
+      if (sortBy === "created") {
         return (a.createdAt - b.createdAt) * dirMul;
-      });
-    }
+      }
+      return 0;
+    });
     return rows;
   }
 
@@ -574,8 +682,9 @@
 
     if (rows.length === 0) {
       tbody.innerHTML =
-        '<tr><td colspan="7" style="text-align:center;padding:24px;color:#909399;">暂无符合条件的阈值行' +
-        (allRows.length ? "（可调整上方筛选）" : "，请添加阈值行") +
+        '<tr><td colspan="7" style="text-align:center;padding:24px;color:#909399;">' +
+        escapeHtml(t("emptyNoData")) +
+        (allRows.length ? escapeHtml(t("emptyHintFilter")) : escapeHtml(t("emptyHintAdd"))) +
         "</td></tr>";
       return;
     }
@@ -585,14 +694,14 @@
         const isRoi = getRuleTargetType(rule) === "roi";
         const notDet = isNotDetectedResult(rule.result);
         const condDisabled = notDet || isRoi;
-        const resOpts = RESULTS.map(function (r) {
+        const resOpts = RESULT_VALS.map(function (v) {
           return (
             '<option value="' +
-            escapeHtml(r.value) +
+            escapeHtml(v) +
             '"' +
-            (r.value === rule.result ? " selected" : "") +
+            (v === rule.result ? " selected" : "") +
             ">" +
-            escapeHtml(r.label) +
+            escapeHtml(resLabelByValue(v)) +
             "</option>"
           );
         }).join("");
@@ -600,8 +709,12 @@
           ? '<div class="target-wrap">' + renderTargetName(rule) + "</div>"
           : "<select class=\"select fov-sel\" style=\"min-width:200px\">" + fovOptions(getRuleTargetName(rule)) + "</select>";
         const actionCell = isRoi
-          ? '<button type="button" class="text-btn btn-view">查看</button>'
-          : '<button type="button" class="text-btn btn-edit">编辑</button><button type="button" class="text-btn danger btn-del">删除</button>';
+          ? '<button type="button" class="text-btn btn-view">' + escapeHtml(t("btnView")) + "</button>"
+          : '<button type="button" class="text-btn btn-edit">' +
+            escapeHtml(t("btnEdit")) +
+            '</button><button type="button" class="text-btn danger btn-del">' +
+            escapeHtml(t("btnDelete")) +
+            "</button>";
 
         return (
           "<tr data-rule-id=\"" +
@@ -623,9 +736,13 @@
           ">" +
           '<option value="enabled"' +
           (rule.status === "enabled" ? " selected" : "") +
-          '>启用</option><option value="disabled"' +
+          ">" +
+          escapeHtml(t("st_enabled")) +
+          '</option><option value="disabled"' +
           (rule.status === "disabled" ? " selected" : "") +
-          '>禁用</option></select></td>' +
+          ">" +
+          escapeHtml(t("st_disabled")) +
+          "</option></select></td>" +
           "<td>" +
           renderCond("c1", rule.c1, condDisabled) +
           "</td>" +
@@ -729,22 +846,29 @@
       return;
     }
 
-    tr.querySelector(".btn-edit").addEventListener("click", function () {
-      if (fovSel) fovSel.focus();
-      showToast("当前为视野阈值，可直接在表格中编辑");
-    });
+      tr.querySelector(".btn-edit").addEventListener("click", function () {
+        if (fovSel) fovSel.focus();
+        showToast(t("toastFovEdit"));
+      });
 
-    tr.querySelector(".btn-del").addEventListener("click", function () {
-      if (!confirm("确定删除该阈值行吗？")) return;
+      tr.querySelector(".btn-del").addEventListener("click", function () {
+        if (!confirm(t("confirmDelete"))) return;
       store[activeFeatureId] = store[activeFeatureId].filter(function (r) {
         return r.id !== id;
       });
       renderTable();
-      showToast("已删除");
+      showToast(t("toastDeleted"));
     });
   }
 
   function init() {
+    TI.wireLangButton();
+    document.addEventListener("threshold:locale", function () {
+      postIndexI18n();
+      renderFeatureList($("#feature-search").value);
+      renderTable();
+    });
+    applyPageI18n();
     renderFeatureList("");
     renderTable();
 
@@ -803,15 +927,15 @@
         })
       );
       renderTable();
-      showToast("已添加一行");
+      showToast(t("toastAddRow"));
     });
 
     $("#btn-create-universal").addEventListener("click", function () {
-      showToast("演示：创建通用阈值（可接后端接口）");
+      showToast(t("toastDemoUniversal"));
     });
 
     $("#btn-deploy").addEventListener("click", function () {
-      showToast("演示：阈值已提交部署（可接后端接口）");
+      showToast(t("toastDemoDeploy"));
     });
 
     (function bindIoModal() {
@@ -835,12 +959,12 @@
 
       $("#io-choose-import").addEventListener("click", function () {
         close();
-        showToast("演示：请选择文件导入");
+        showToast(t("toastDemoImport"));
       });
 
       $("#io-choose-export").addEventListener("click", function () {
         close();
-        showToast("演示：导出阈值 JSON（可接下载）");
+        showToast(t("toastDemoExport"));
       });
     })();
 
@@ -849,7 +973,7 @@
     });
 
     $("#btn-roi").addEventListener("click", function () {
-      showToast("演示：ROI 阈值配置");
+      showToast(t("toastDemoRoi"));
     });
   }
 
